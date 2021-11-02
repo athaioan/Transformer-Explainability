@@ -1,0 +1,24 @@
+Downloading: "https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_base_p16_224-80ecf9dd.pth" to C:\Users\georg/.cache\torch\hub\checkpoints\jx_vit_base_p16_224-80ecf9dd.pth
+Top 5 classes:
+	282 : tiger cat       		value = 10.559	 prob = 68.6%
+	281 : tabby, tabby cat		value = 9.059	 prob = 15.3%
+	285 : Egyptian cat    		value = 8.414	 prob = 8.0%
+	243 : bull mastiff    		value = 7.425	 prob = 3.0%
+	811 : space heater    		value = 5.152	 prob = 0.3%
+C:\Users\georg\anaconda3\lib\site-packages\torch\nn\functional.py:3609: UserWarning: Default upsampling behavior when mode=bilinear is changed to align_corners=False since 0.4.0. Please specify align_corners=True if the old behavior is desired. See the documentation of nn.Upsample for details.
+  warnings.warn(
+Top 5 classes:
+	101 : tusker                              		value = 11.216	 prob = 37.9%
+	340 : zebra                               		value = 10.973	 prob = 29.7%
+	386 : African elephant, Loxodonta africana		value = 10.747	 prob = 23.7%
+	385 : Indian elephant, Elephas maximus    		value = 9.547	 prob = 7.2%
+	343 : warthog                             		value = 5.566	 prob = 0.1%
+Top 5 classes:
+	161 : basset, basset hound         		value = 10.514	 prob = 78.8%
+	163 : bloodhound, sleuthhound      		value = 8.604	 prob = 11.7%
+	166 : Walker hound, Walker foxhound		value = 7.446	 prob = 3.7%
+	162 : beagle                       		value = 5.561	 prob = 0.6%
+	168 : redbone                      		value = 5.249	 prob = 0.4%
+
+
+Process finished with exit code 0
