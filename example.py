@@ -93,6 +93,8 @@ axs[1].axis('off');
 axs[2].imshow(dog);
 axs[2].axis('off');
 
+plt.show()
+
 
 image = Image.open('samples/el2.png')
 tusker_zebra_image = transform(image)
