@@ -42,7 +42,7 @@ def generate_visualization(original_image, class_index=None):
     transformer_attribution = transformer_attribution.reshape(224, 224).cuda().data.cpu().numpy()
     transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (
                 transformer_attribution.max() - transformer_attribution.min())
-    image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
+    image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()    # same as np.transpose(1, 2, 0)
     image_transformer_attribution = (image_transformer_attribution - image_transformer_attribution.min()) / (
                 image_transformer_attribution.max() - image_transformer_attribution.min())
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
