@@ -35,7 +35,7 @@ class LRP:
         one_hot = torch.sum(one_hot.cuda() * output)
 
         self.model.zero_grad()
-        one_hot.backward(retain_graph=True)
+        one_hot.backward(retain_graph=True) # register_hook will save the gradients
 
         return self.model.relprop(torch.tensor(one_hot_vector).to(input.device), method=method, is_ablation=is_ablation,
                                   start_layer=start_layer, **kwargs)
