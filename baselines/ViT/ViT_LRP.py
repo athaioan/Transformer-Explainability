@@ -288,7 +288,6 @@ class VisionTransformer(nn.Module):
     def get_inp_grad(self):
         return self.inp_grad
 
-
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
