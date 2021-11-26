@@ -6,7 +6,10 @@ import torchvision.transforms as transforms
 from types import SimpleNamespace
 
 from utils import *
+# from ours.Utils.utils import *
+
 from network import ViT_model
+
 
 
 ### Setting arguments
@@ -17,10 +20,6 @@ args = SimpleNamespace(batch_size=1,
                        labels_dict="val_labels_dict.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
                        )
-set_seeds(0)
-
-
-
 
 import pickle
 
@@ -61,7 +60,10 @@ val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
 
 ## Initialize model
 model = ViT_model().to(args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
+model.load_pretrained("saved_weights.pth")
 
+# (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
+#                  n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0., n_block=12, mlp_ratio=4.)
 
 for index, data in enumerate(val_loader):
 
@@ -69,8 +71,8 @@ for index, data in enumerate(val_loader):
     img = data[0]
     label = data[1]
 
-    preds = model(img)
+    # preds = model(img)
 
-    # model.extract_cam(img,label)
+    model.extract_LRP(img)
 
     print("")
