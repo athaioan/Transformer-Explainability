@@ -4,10 +4,12 @@ import matplotlib.pyplot as plt
 from overwritten_layers import *
 from utils import *
 from einops import rearrange
+# from ours.Utils.utils import *
 
 
 class ViT_model(nn.Module):
-    def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768):
+    def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
+                 n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.):
         super(ViT_model, self).__init__()
 
 
@@ -16,33 +18,50 @@ class ViT_model(nn.Module):
         self.patch_size = patch_size
         self.in_ch = in_ch
         self.embed_dim = embed_dim
+        self.n_heads = n_heads
+        self.n_blocks = n_blocks
+        self.mlp_hidden_ratio = mlp_hidden_ratio
+        self.QKV_bias = QKV_bias
 
         self.add = Add()
-        self.patching = Img_to_patch(img_size, patch_size, in_ch, embed_dim)
+        self.patch_embed = Img_to_patch(img_size, patch_size, in_ch, embed_dim)
 
-        self.positional_embed = nn.Parameter(torch.zeros(1, self.patching.n_patches + 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         set_seeds(0)
-        no_grad_trunc_normal_(self.positional_embed, std=.02)
+        no_grad_trunc_normal_(self.pos_embed, std=.02)
         no_grad_trunc_normal_(self.cls_token, std=.02)
 
         self.input_grad = None
-        self.att = Attention_layer(768, n_heads=12, QKV_bias=True, att_dropout=0., proj_dropout=0.)
+
+        self.blocks = nn.ModuleList([Block(embed_dim=self.embed_dim, n_heads=self.n_heads,
+                           QKV_bias=self.QKV_bias, att_dropout=att_dropout, out_dropout=out_dropout, mlp_hidden_ratio=4)
+                                       for _ in range(self.n_blocks)])
+
+        self.norm = LayerNorm(embed_dim)
+        self.head = Linear(self.embed_dim, self.n_classes)
+        self.pool = ClsSelect()
+
 
     def forward(self, x):
         batch_size = x.shape[0]
-        x = self.patching(x)
+        x = self.patch_embed(x)
 
         cls_token = self.cls_token.expand(batch_size, -1, -1)# from Phil Wang
         x = torch.cat((cls_token, x), dim=1)
-        x = self.add([x, self.positional_embed])# x+= self.positional_embed
+        x = self.add([x, self.pos_embed])# x+= self.positional_embed
 
         x.register_hook(self.store_input_grad) ## When computing the grad wrt to the input x, store that grad to the model.input_grad
 
-        self.att(x)
+        for current_block in self.blocks:
+            x = current_block(x)
 
-        print("")
+        x = self.norm(x)
+        x = self.pool(x, dim=1, index=torch.tensor(0, device=x.device)) ## retrieve the cls
+        x = x.squeeze(1)
+        x = self.head(x)
+        return x
 
     def store_input_grad(self, grad):
         self.input_grad = grad
@@ -51,8 +70,22 @@ class ViT_model(nn.Module):
     def extract_cam(self):
         print("")
 
-    def load_pretrained(self):
-        print("")
+    def load_pretrained(self, weights_path):
+
+        ## loading weights
+        weights_dict = torch.load(weights_path)
+
+        model_dict = self.state_dict()
+        pretrained_dict = {k: v for k, v in weights_dict.items() if
+                           k in model_dict and weights_dict[k].shape == model_dict[k].shape}
+
+        no_pretrained_dict = {k: v for k, v in model_dict.items() if
+                           not (k in weights_dict) or weights_dict[k].shape != model_dict[k].shape}
+
+        model_dict.update(pretrained_dict)
+        self.load_state_dict(model_dict)
+
+
 
 
 class Img_to_patch(nn.Module):
@@ -63,54 +96,60 @@ class Img_to_patch(nn.Module):
         self.input_ch = input_ch
         self.embed_size = embed_size
         ## TODO architecture
-        self.conv2d = Conv2d(self.input_ch, self.embed_size, kernel_size=(self.patch_size, self.patch_size),
+        self.proj = Conv2d(self.input_ch, self.embed_size, kernel_size=(self.patch_size, self.patch_size),
                              stride=(self.patch_size, self.patch_size))
 
         self.n_patches = (img_size[1] // self.patch_size) * (img_size[0] // self.patch_size)
 
     def forward(self, x):
 
-        x = self.conv2d(x).flatten(2).transpose(1, 2)
+        x = self.proj(x).flatten(2).transpose(1, 2)
         return x
 
 class Attention_layer(nn.Module):
 
-    def __init__(self, embed_size, n_heads=12, QKV_bias=False, att_dropout=0., proj_dropout=0.):
+    def __init__(self, embed_dim=768, n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0.):
         super().__init__()
+
         self.n_heads = n_heads
-        head_dim = embed_size // n_heads
+        self.QKV_bias = QKV_bias
+
+
+        head_dim = embed_dim // n_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
 
-        self.qkv = Linear(embed_size, embed_size * 3, bias=QKV_bias)
+        self.qkv = Linear(embed_dim, embed_dim * 3, bias=self.QKV_bias)
+        self.proj = Linear(embed_dim, embed_dim)
 
         # A = Q*K^T
         self.matmul1 = Matmul(transpose=True)
+        # att = A*V
         self.matmul2 = Matmul(transpose=False)
+        self.att_softmax = Softmax(dim=-1)
 
-        self.softmax = Softmax()
 
+        self.att_dropout = Dropout(att_dropout)
+        self.out_dropout = Dropout(out_dropout)
 
-        # self.matmul1 = matmul()
-        # # attn = A*V
-        # self.matmul2 = einsum('bhij,bhjd->bhid')
+        self.v = None
+        self.att = None
+        self.att_grad = None
+        ## TODO rel_prop Nones
+        ## TODO rel_pro function
 
-        # self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
-        # self.att_drop = Dropout(att_dropout)
-        # self.proj = Linear(dim, dim)
-        # self.proj_drop = Dropout(proj_drop)
-        # self.softmax = Softmax(dim=-1)
-        #
-        # self.attn_cam = None
-        # self.attn = None
-        # self.v = None
-        # self.v_cam = None
-        # self.attn_gradients = None
 
     def store_v(self, v):
         self.v = v
 
-    def forward(self,x):
+    def store_att(self, att):
+        self.att = att
+
+    def store_att_grad(self, grad):
+        self.att_grad = grad
+
+
+    def forward(self, x):
         batch, n, embed_size = x.shape
         qkv = self.qkv(x)
 
@@ -120,8 +159,95 @@ class Attention_layer(nn.Module):
 
         self.store_v(v)
 
+        # A = Q * K.T
         scaled_products = self.matmul1([q, k]) * self.scale
 
-        attn = self.softmax(scaled_products)
+        att = self.att_softmax(scaled_products)
+        att = self.att_dropout(att)
 
-        print("")
+        self.store_att(att)
+
+        att.register_hook(self.store_att_grad)
+
+        # att = A*V
+        x = self.matmul2([att, v])
+        x = x.permute(0, 2, 1, 3)
+        x = torch.reshape(x, (batch, n, embed_size))
+
+
+        x = self.proj(x)
+        x = self.out_dropout(x)
+
+        return x
+
+class Mlp(nn.Module):
+
+    def __init__(self, in_dim, hidden_dim=None, dropout=0.):
+        super().__init__()
+
+        if hidden_dim is None:
+            hidden_dim = in_dim
+
+        self.fc1 = Linear(in_dim, hidden_dim)
+        self.fc2 = Linear(hidden_dim, in_dim)
+        self.dropout = Dropout(dropout)
+        self.gelu = GELU()
+
+        # TODO rel_prop
+
+    def forward(self, x):
+        ## FC1
+        x = self.fc1(x)
+        x = self.gelu(x)
+        x = self.dropout(x)
+
+        ## FC2
+        x = self.fc2(x)
+        x = self.dropout(x)
+
+        return x
+
+class Block(nn.Module):
+
+    def __init__(self, embed_dim=768, n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0.,
+                 mlp_hidden_ratio=4):
+        super().__init__()
+
+        self.embed_dim = embed_dim
+        self.n_heads = n_heads
+        self.QKV_bias = QKV_bias
+        self.mlp_hidden_ratio = mlp_hidden_ratio
+
+
+        ## MLP layer
+        self.mlp = Mlp(embed_dim, hidden_dim=int(self.mlp_hidden_ratio*self.embed_dim), dropout=out_dropout)
+
+        ## Attention layer
+        self.attn = Attention_layer(embed_dim=self.embed_dim, n_heads=self.n_heads, QKV_bias=self.QKV_bias,
+                                   att_dropout=att_dropout, out_dropout=out_dropout)
+
+        ## Normalization layers
+        self.norm1 = LayerNorm(self.embed_dim, eps=1e-6)
+        self.norm2 = LayerNorm(self.embed_dim, eps=1e-6)
+
+        self.add1 = Add()
+        self.add2 = Add()
+
+        self.clone1 = Clone()
+        self.clone2 = Clone()
+
+
+
+    def forward(self,x):
+
+        x1, x2 = self.clone1(x, 2)
+        x2 = self.norm1(x2)
+        x2 = self.attn(x2)
+        x = self.add1([x1, x2])
+
+        x1, x2 = self.clone2(x, 2)
+        x2 = self.norm2(x2)
+        x2 = self.mlp(x2)
+        x = self.add2([x1, x2])
+
+        return x

@@ -59,3 +59,21 @@ class Matmul(nn.Module):
 
 class Softmax(nn.Softmax):
     pass
+
+class Dropout(nn.Dropout):
+    pass
+
+class GELU(nn.GELU):
+    pass
+
+class LayerNorm(nn.LayerNorm):
+    pass
+
+class ClsSelect(nn.Module):  ## Change when implementing  Rel_pro
+
+    def forward(self, input, dim, index):
+
+        self.dim = dim
+        self.index = index
+
+        return torch.index_select(input, dim, index)
