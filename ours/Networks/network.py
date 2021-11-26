@@ -67,8 +67,43 @@ class ViT_model(nn.Module):
         self.input_grad = grad
 
 
-    def extract_cam(self):
-        print("")
+    def relevance_progation(self, one_hot_label, start_layer=0):
+
+        ## from top to bottom
+        relevance = self.head.relevance_propagation(one_hot_label)
+        relevance = self.pool.relevance_propagation(relevance)
+        relevance = self.norm.relevance_propagation(relevance)
+
+        for current_block in reversed(self.blocks):
+            relevance = current_block.relevance_propagation(relevance)
+
+        return relevance
+
+
+    def extract_LRP(self, input, class_indices = None, start_layer=0):
+
+        pred = self(input)
+
+        if class_indices is None:
+            class_indices = torch.argmax(pred, dim=1).data.cpu().numpy().tolist()
+
+
+        one_hot = np.zeros((1, pred.shape[-1]), dtype=np.float32)
+        one_hot[0, class_indices] = 1
+
+        one_hot_label = one_hot
+        one_hot = torch.from_numpy(one_hot).requires_grad_(True)
+        one_hot = torch.sum(one_hot.to(input.device) * pred)
+
+        self.zero_grad()
+        one_hot.backward(retain_graph=True) ## Register_hooks are excecuted in here
+
+        cam = self.relevance_progation(torch.tensor(one_hot_label).to(input.device),
+                                 start_layer=start_layer)
+
+        return cam
+
+
 
     def load_pretrained(self, weights_path):
 
