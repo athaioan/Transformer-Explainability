@@ -41,8 +41,13 @@ def forward_hook(self, input, output):
 
     self.output = output
 
+### Inherit nn.Module wheen possible
+
+
 
 class RelProp(nn.Module):
+    ## TODO why? /2
+
     def __init__(self):
         super(RelProp, self).__init__()
         # if not self.training:
@@ -50,6 +55,24 @@ class RelProp(nn.Module):
 
     def relevance_propagation(self, R):
         return R
+
+class RelPropSimple(RelProp):
+    ## TODO why? /2
+
+    def relevance_propagation(self, R):
+        Z = self.forward(self.input)
+        S = safe_divide(R, Z)
+        # C = self.gradprop(Z, self.X, S)
+        C = torch.autograd.grad(Z,  self.input, S, retain_graph=False)
+
+
+        if torch.is_tensor(self.input) == False:
+            outputs = []
+            outputs.append(self.input[0] * C[0])
+            outputs.append(self.input[1] * C[1])
+        else:
+            outputs = self.input * (C[0])
+        return outputs
 
 class Conv2d(nn.Conv2d, RelProp):
 
@@ -108,7 +131,7 @@ class Linear(nn.Linear, RelProp):
 
     #TODO REL_PROP
 
-class Matmul(nn.Module):
+class Matmul(RelPropSimple):
 
     def __init__(self, transpose=False):
         super().__init__()

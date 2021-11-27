@@ -8,26 +8,27 @@ from einops import rearrange
 
 
 class ViT_model(nn.Module):
-    def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
-                 n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.):
+    def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
+                 n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
+                 device="cuda"):
         super(ViT_model, self).__init__()
 
-
+        self.device = device
         self.n_classes = n_classes
         self.img_size = img_size
         self.patch_size = patch_size
         self.in_ch = in_ch
-        self.embed_dim = embed_dim
+        self.embed_size = embed_size
         self.n_heads = n_heads
         self.n_blocks = n_blocks
         self.mlp_hidden_ratio = mlp_hidden_ratio
         self.QKV_bias = QKV_bias
 
         self.add = Add()
-        self.patch_embed = Img_to_patch(img_size, patch_size, in_ch, embed_dim)
+        self.patch_embed = Img_to_patch(img_size, patch_size, in_ch, embed_size)
 
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, embed_dim))
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, embed_size))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_size))
 
         set_seeds(0)
         no_grad_trunc_normal_(self.pos_embed, std=.02)
@@ -35,13 +36,15 @@ class ViT_model(nn.Module):
 
         self.input_grad = None
 
-        self.blocks = nn.ModuleList([Block(embed_dim=self.embed_dim, n_heads=self.n_heads,
+        self.blocks = nn.ModuleList([Block(embed_size=self.embed_size, n_heads=self.n_heads,
                            QKV_bias=self.QKV_bias, att_dropout=att_dropout, out_dropout=out_dropout, mlp_hidden_ratio=4)
                                        for _ in range(self.n_blocks)])
 
-        self.norm = LayerNorm(embed_dim)
-        self.head = Linear(self.embed_dim, self.n_classes)
+        self.norm = LayerNorm(embed_size)
+        self.head = Linear(self.embed_size, self.n_classes)
         self.pool = ClsSelect()
+
+        self.to(self.device)
 
 
     def forward(self, x):
@@ -76,6 +79,13 @@ class ViT_model(nn.Module):
 
         for current_block in reversed(self.blocks):
             relevance = current_block.relevance_propagation(relevance)
+
+            # ## for purposes of evaluating the attention rel_prop without having block's
+            # ## rel_pro beforehand
+            # relevance = torch.load("tensor.pt").to(self.device) ## loading the
+            # ## input relevance at attention as generated from her implementation
+            # relevance = current_block.attn.relevance_propagation(relevance)
+            # print("")
 
         return relevance
 
@@ -143,19 +153,19 @@ class Img_to_patch(nn.Module):
 
 class Attention_layer(nn.Module):
 
-    def __init__(self, embed_dim=768, n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0.):
+    def __init__(self, embed_size=768, n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0.):
         super().__init__()
 
         self.n_heads = n_heads
         self.QKV_bias = QKV_bias
 
 
-        head_dim = embed_dim // n_heads
+        head_dim = embed_size // n_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
 
-        self.qkv = Linear(embed_dim, embed_dim * 3, bias=self.QKV_bias)
-        self.proj = Linear(embed_dim, embed_dim)
+        self.qkv = Linear(embed_size, embed_size * 3, bias=self.QKV_bias)
+        self.proj = Linear(embed_size, embed_size)
 
         # A = Q*K^T
         self.matmul1 = Matmul(transpose=True)
@@ -170,8 +180,9 @@ class Attention_layer(nn.Module):
         self.v = None
         self.att = None
         self.att_grad = None
-        ## TODO rel_prop Nones
-        ## TODO rel_pro function
+
+        self.v_relevance = None
+        self.att_relevance = None
 
 
     def store_v(self, v):
@@ -182,6 +193,19 @@ class Attention_layer(nn.Module):
 
     def store_att_grad(self, grad):
         self.att_grad = grad
+
+    def store_v_relevance(self, relevance):
+        self.v_relevance = relevance
+
+    def store_att_relevance(self, relevance):
+        self.att_relevance = relevance
+
+
+    def get_v_relevance(self):
+        return self.v_relevance
+
+    def get_att_relevance(self):
+        return self.att_relevance
 
 
     def forward(self, x):
@@ -215,6 +239,45 @@ class Attention_layer(nn.Module):
 
         return x
 
+    def relevance_propagation(self, relevance):
+        batch, n, embed_size = relevance.shape
+
+        relevance = self.out_dropout.relevance_propagation(relevance)
+        relevance = self.proj.relevance_propagation(relevance)
+
+        relevance = torch.reshape(relevance,
+                            (batch, n, self.n_heads, embed_size//self.n_heads))
+        relevance = relevance.permute(0, 2, 1, 3)
+
+
+        relevance, relevance_v = self.matmul2.relevance_propagation(relevance)
+        ## TODO why? /2
+        relevance /=2
+        relevance_v /=2
+
+        self.store_v_relevance(relevance_v)
+        self.store_att_relevance(relevance)
+
+        relevance = self.att_dropout.relevance_propagation(relevance)
+        relevance = self.att_softmax.relevance_propagation(relevance)
+
+        relevance_q, relevance_k = self.matmul1.relevance_propagation(relevance)
+
+        ## TODO why? /2
+        relevance_q /=2
+        relevance_k /=2
+
+        relevance_qkv = torch.stack([relevance_q,
+                                   relevance_k,
+                                   relevance_v])
+
+        relevance_qkv = relevance_qkv.permute(1, 3, 0, 2, 4)
+        relevance_qkv = torch.reshape(relevance_qkv, (batch, n, 3*embed_size))
+
+        relevance_qkv = self.qkv.relevance_propagation(relevance_qkv)
+
+        return relevance_qkv
+
 class Mlp(nn.Module):
 
     def __init__(self, in_dim, hidden_dim=None, dropout=0.):
@@ -244,26 +307,26 @@ class Mlp(nn.Module):
 
 class Block(nn.Module):
 
-    def __init__(self, embed_dim=768, n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0.,
+    def __init__(self, embed_size=768, n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0.,
                  mlp_hidden_ratio=4):
         super().__init__()
 
-        self.embed_dim = embed_dim
+        self.embed_size = embed_size
         self.n_heads = n_heads
         self.QKV_bias = QKV_bias
         self.mlp_hidden_ratio = mlp_hidden_ratio
 
 
         ## MLP layer
-        self.mlp = Mlp(embed_dim, hidden_dim=int(self.mlp_hidden_ratio*self.embed_dim), dropout=out_dropout)
+        self.mlp = Mlp(embed_size, hidden_dim=int(self.mlp_hidden_ratio*self.embed_size), dropout=out_dropout)
 
         ## Attention layer
-        self.attn = Attention_layer(embed_dim=self.embed_dim, n_heads=self.n_heads, QKV_bias=self.QKV_bias,
+        self.attn = Attention_layer(embed_size=self.embed_size, n_heads=self.n_heads, QKV_bias=self.QKV_bias,
                                    att_dropout=att_dropout, out_dropout=out_dropout)
 
         ## Normalization layers
-        self.norm1 = LayerNorm(self.embed_dim, eps=1e-6)
-        self.norm2 = LayerNorm(self.embed_dim, eps=1e-6)
+        self.norm1 = LayerNorm(self.embed_size, eps=1e-6)
+        self.norm2 = LayerNorm(self.embed_size, eps=1e-6)
 
         self.add1 = Add()
         self.add2 = Add()
