@@ -78,7 +78,7 @@ class ViT_model(nn.Module):
         relevance = self.norm.relevance_propagation(relevance)
 
         for current_block in reversed(self.blocks):
-            # relevance = current_block.relevance_propagation(relevance)
+            relevance = current_block.relevance_propagation(relevance)
 
             # ## for purposes of evaluating the attention rel_prop without having block's
             # ## rel_pro beforehand
