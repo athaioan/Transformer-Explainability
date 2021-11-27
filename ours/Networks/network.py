@@ -78,7 +78,7 @@ class ViT_model(nn.Module):
         relevance = self.norm.relevance_propagation(relevance)
 
         for current_block in reversed(self.blocks):
-            relevance = current_block.relevance_propagation(relevance)
+            # relevance = current_block.relevance_propagation(relevance)
 
             # ## for purposes of evaluating the attention rel_prop without having block's
             # ## rel_pro beforehand
@@ -184,6 +184,7 @@ class Attention_layer(nn.Module):
         self.v_relevance = None
         self.att_relevance = None
 
+    # TODO eliminated those not being used
 
     def store_v(self, v):
         self.v = v
@@ -200,6 +201,14 @@ class Attention_layer(nn.Module):
     def store_att_relevance(self, relevance):
         self.att_relevance = relevance
 
+    def get_v(self):
+        return self.v
+
+    def get_att(self):
+        return self.att
+
+    def get_att_grad(self):
+        return self.att_grad
 
     def get_v_relevance(self):
         return self.v_relevance
