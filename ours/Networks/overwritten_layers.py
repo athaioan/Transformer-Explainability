@@ -29,8 +29,7 @@ def forward_hook(self, input, output):
 
     self.output = output
 
-
-class RelProp(nn.Module):
+class RelProp(nn.Module):   # todo --> Stolen from Hila Chefer
     def __init__(self):
         super(RelProp, self).__init__()
         # if not self.training:
@@ -39,6 +38,20 @@ class RelProp(nn.Module):
     def relevance_propagation(self, R):
         return R
 
+class RelPropSimple(RelProp):    ### todo -> Stolen from Hila Chefer
+    def relprop(self, R, alpha):
+        Z = self.forward(self.X)
+        S = safe_divide(R, Z)
+        C = self.gradprop(Z, self.X, S)
+
+        if torch.is_tensor(self.X) == False:
+            outputs = []
+            outputs.append(self.X[0] * C[0])
+            outputs.append(self.X[1] * C[1])
+        else:
+            outputs = self.X * (C[0])
+        return outputs
+
 class Conv2d(nn.Conv2d, RelProp):
 
     def test_funct(self):
@@ -46,7 +59,7 @@ class Conv2d(nn.Conv2d, RelProp):
 
     #TODO REL_PROP
 
-class Add(nn.Module): ## Change when implementing  Rel_pro
+class Add(RelPropSimple): ##  todo --> Change when implementing  Rel_pro
 
     def forward(self, inputs):
         return torch.add(*inputs)
@@ -71,10 +84,9 @@ class Add(nn.Module): ## Change when implementing  Rel_pro
 
         return relprop_out
 
-class Clone(RelProp): ## Change when implementing  Rel_pro
+class Clone(RelProp): ##  todo --> Change when implementing  Rel_pro
 
     def forward(self, input, num):
-
         self.num = num
         clone_list = []
         for _ in range(num):

@@ -49,9 +49,9 @@ class ViT_model(nn.Module):
         batch_size = x.shape[0]
         x = self.patch_embed(x)
 
-        cls_token = self.cls_token.expand(batch_size, -1, -1)# from Phil Wang
+        cls_token = self.cls_token.expand(batch_size, -1, -1) # stolen from Phil Wang
         x = torch.cat((cls_token, x), dim=1)
-        x = self.add([x, self.pos_embed])# x+= self.positional_embed
+        x = self.add([x, self.pos_embed])
 
         x.register_hook(self.store_input_grad) ## When computing the grad wrt to the input x, store that grad to the model.input_grad
 
@@ -288,17 +288,18 @@ class Block(nn.Module):
 
         return x
 
-    
-    ####### NEW #######
+    ###### NEW ######
     def relevance_propagation(self, relevance, **kwargs):
-        (relevance, relevance_dupl) = self.add2.relprop(relevance, **kwargs)
-        relevance_dupl = self.mlp.relprop(relevance_dupl, **kwargs)
-        relevance_dupl = self.norm2.relprop(relevance_dupl, **kwargs)
-        relevance = self.clone2.relprop((relevance, relevance_dupl), **kwargs)
+       # (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance, **kwargs)
+       # relevance_dupl = self.mlp.relevance_propagation(relevance_dupl, **kwargs)
+       # relevance_dupl = self.norm2.relevance_propagation(relevance_dupl, **kwargs)
+       # relevance = self.clone2.relevance_propagation((relevance, relevance_dupl), **kwargs)
 
-        (relevance, relevance_dupl) = self.add1.relprop(relevance, **kwargs)
-        relevance_dupl = self.attn.relprop(relevance_dupl, **kwargs)
-        relevance_dupl = self.norm1.relprop(relevance_dupl, **kwargs)
-        relevance = self.clone1.relprop((relevance, relevance_dupl), **kwargs)
+        relevance = self.clone2.relevance_propagation((relevance, relevance), **kwargs)
+
+        (relevance, relevance_dupl) = self.add1.relevance_propagation(relevance, **kwargs)
+        relevance_dupl = self.attn.relevance_propagation(relevance_dupl, **kwargs)
+        relevance_dupl = self.norm1.relevance_propagation(relevance_dupl, **kwargs)
+        relevance = self.clone1.relevance_propagation((relevance, relevance_dupl), **kwargs)
 
         return relevance
