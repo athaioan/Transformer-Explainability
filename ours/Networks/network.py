@@ -1,11 +1,11 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-from overwritten_layers import *
-from utils import *
+# from overwritten_layers import *   # Ioannis
+# from utils import *   # Ioannis
 from einops import rearrange
-# from ours.Utils.utils import *
-
+from ours.Utils.utils import *   # Georgios
+from ours.Networks.overwritten_layers import *   # Georgios
 
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
@@ -314,6 +314,15 @@ class Mlp(nn.Module):
 
         return x
 
+    ############################################################
+    def relevance_propagation(self, cam, **kwargs):
+        cam = self.dropout.relevance_propagation(cam, **kwargs)
+        cam = self.fc2.relevance_propagation(cam, **kwargs)
+        cam = self.gelu.relevance_propagation(cam, **kwargs)
+        cam = self.fc1.relevance_propagation(cam, **kwargs)
+        return cam
+    ############################################################
+
 class Block(nn.Module):
 
     def __init__(self, embed_size=768, n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0.,
@@ -343,10 +352,7 @@ class Block(nn.Module):
         self.clone1 = Clone()
         self.clone2 = Clone()
 
-
-
-    def forward(self,x):
-
+    def forward(self, x):
         x1, x2 = self.clone1(x, 2)
         x2 = self.norm1(x2)
         x2 = self.attn(x2)
@@ -358,3 +364,23 @@ class Block(nn.Module):
         x = self.add2([x1, x2])
 
         return x
+
+    ###### GM NEW ###### todo --> remove comment after explaining
+    def relevance_propagation(self, relevance, **kwargs):
+        (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance, **kwargs)
+        # relevance_dupl = self.mlp.relevance_propagation(relevance_dupl, **kwargs)
+        relevance_dupl = self.norm2.relevance_propagation(relevance_dupl, **kwargs)
+        relevance = self.clone2.relevance_propagation((relevance, relevance_dupl), **kwargs)
+
+        (relevance, relevance_dupl) = self.add1.relevance_propagation(relevance, **kwargs)
+        relevance_temp = self.attn.relevance_propagation(relevance_dupl, **kwargs)
+
+        # todo -->  ask Ioannis
+        if(relevance_temp.shape != relevance_dupl.shape):
+            relevance_dupl = relevance_temp.reshape(relevance_temp.shape[1], relevance_temp.shape[2], relevance_temp.shape[3])
+            # print(str(relevance_temp.shape) + '!=' + str(relevance_dupl.shape))
+
+        relevance_dupl = self.norm1.relevance_propagation(relevance_dupl, **kwargs)
+        relevance = self.clone1.relevance_propagation((relevance, relevance_dupl), **kwargs)
+
+        return relevance
