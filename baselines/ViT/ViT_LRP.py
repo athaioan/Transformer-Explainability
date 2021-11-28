@@ -202,14 +202,41 @@ class Block(nn.Module):
 
     def relprop(self, cam, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
+        (relevance, relevance_dupl) = self.add2.relprop(cam, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam2 = self.mlp.relprop(cam2, **kwargs)
+        relevance_dupl = self.mlp.relprop(relevance_dupl, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam2 = self.norm2.relprop(cam2, **kwargs)
+        relevance_dupl = self.norm2.relprop(relevance_dupl, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
+        relevance = self.clone2.relprop((relevance, relevance_dupl), **kwargs)
+        assert torch.equal(cam, relevance) and torch.equal(cam2, relevance_dupl)
+
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
+        (relevance, relevance_dupl) = self.add1.relprop(relevance, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam2 = self.attn.relprop(cam2, **kwargs)
+        relevance_dupl = self.attn.relprop(relevance_dupl, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam2 = self.norm1.relprop(cam2, **kwargs)
+        relevance_dupl = self.norm1.relprop(relevance_dupl, **kwargs)
+        assert torch.equal(cam1, relevance) and torch.equal(cam2, relevance_dupl)
+
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
+        relevance = self.clone1.relprop((relevance, relevance_dupl), **kwargs)
+        assert torch.equal(cam, relevance) and torch.equal(cam2, relevance_dupl)
+
+
+
+
         return cam
 
 
