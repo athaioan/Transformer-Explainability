@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-from utils import *
-# from ours.Utils.utils import *
+# from utils import *
+from ours.Utils.utils import *
 
-from network import ViT_model
+from ours.Networks.network import ViT_model
 
 
 
@@ -25,7 +25,7 @@ import pickle
 
 dict = {}
 
-# with open('C:/Users/johny/Desktop/Transformer-Explainability-main/Transformer-Explainability-main/val_labels.txt') as file:
+# with open(r'C:\Users\georg\PycharmProjects\Transformer-Explainability\val_labels.txt') as file:
 #     lines = file.readlines()
 #     lines = [line.rstrip() for line in lines]
 #     for current_line in lines:
@@ -38,8 +38,8 @@ dict = {}
 #     pickle.dump(dict, f)
 
 # loading
-# with open(args.labels_dict, 'rb') as f:
-#     ret_di = pickle.load(f)
+with open(args.labels_dict, 'rb') as f:
+    ret_di = pickle.load(f)
 
 normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 transform = transforms.Compose([
