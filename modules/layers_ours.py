@@ -103,19 +103,52 @@ class Add(RelPropSimple):
         S = safe_divide(R, Z)
         C = self.gradprop(Z, self.X, S)
 
+        # temp
+        R_sum = R.sum()
+
+        #ours
+        layer_out = self.forward(self.X)   # ours
+        gradients = torch.autograd.grad(layer_out, self.X, safe_divide(R, layer_out), retain_graph=True)
+
+        assert torch.equal(C[0], gradients[0]) and torch.equal(C[1], gradients[1])
+
         a = self.X[0] * C[0]
         b = self.X[1] * C[1]
+
+        # ours
+        n_relevances = len(gradients)
+        relprop_mul = [self.X[i] * gradients[i] for i in range(n_relevances)]   # a, b
+
+        assert torch.equal(a, relprop_mul[0]) and torch.equal(b, relprop_mul[1])
 
         a_sum = a.sum()
         b_sum = b.sum()
 
+        # ours a.sum  b.sum
+        relprop_sum = [relprop_mul[i].sum() for i in range(n_relevances)]
+        relprop_abs = [relprop_sum[i].abs() for i in range(n_relevances)]
+        relprop_abs_sum = 0
+        for i in range(len(relprop_abs)):
+            relprop_abs_sum += relprop_abs[i]
+
+        assert torch.equal(a_sum, relprop_sum[0]) and torch.equal(b_sum, relprop_sum[1])
+
         a_fact = safe_divide(a_sum.abs(), a_sum.abs() + b_sum.abs()) * R.sum()
         b_fact = safe_divide(b_sum.abs(), a_sum.abs() + b_sum.abs()) * R.sum()
+
+        # ours
+        relprop_out = [safe_divide(relprop_abs[i], relprop_abs_sum) * R_sum for i in range(n_relevances)]
+        assert torch.equal(a_fact, relprop_out[0]) and torch.equal(b_fact, relprop_out[1])
 
         a = a * safe_divide(a_fact, a.sum())
         b = b * safe_divide(b_fact, b.sum())
 
+        # ours
+        relprop_out = [relprop_mul[i] * safe_divide(relprop_out[i], relprop_sum[i]) for i in range(n_relevances)]
+
         outputs = [a, b]
+
+        assert torch.equal(a, relprop_out[0]) and torch.equal(b, relprop_out[1])
 
         return outputs
 
@@ -161,10 +194,23 @@ class Clone(RelProp):
         Z = []
         for _ in range(self.num):
             Z.append(self.X)
+
+        # ours
+        layer_out = self.forward(self.X, self.num)
+        assert torch.equal(Z[0], layer_out[0]) and torch.equal(Z[1], layer_out[1])
+
         S = [safe_divide(r, z) for r, z in zip(R, Z)]
         C = self.gradprop(Z, self.X, S)[0]
 
+        # temp
+        relevances = R
+
+        # ours
+        relprop_out = torch.autograd.grad(layer_out, self.X, [safe_divide(rel, out) for rel, out in zip(relevances, layer_out)], retain_graph=True)
+        relprop_out = self.X * relprop_out[0]
         R = self.X * C
+
+        assert torch.equal(relprop_out, R)
 
         return R
 
