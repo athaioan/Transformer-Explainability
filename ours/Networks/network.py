@@ -314,6 +314,15 @@ class Mlp(nn.Module):
 
         return x
 
+    ############################ HILA CHEFER ################################
+    def relevance_propagation(self, cam, **kwargs):
+        cam = self.dropout.relevance_propagation(cam, **kwargs)
+        cam = self.fc2.relevance_propagation(cam, **kwargs)
+        cam = self.gelu.relevance_propagation(cam, **kwargs)
+        cam = self.fc1.relevance_propagation(cam, **kwargs)
+        return cam
+    ############################# HILA CHEFER ###############################
+
 class Block(nn.Module):
 
     def __init__(self, embed_size=768, n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0.,
