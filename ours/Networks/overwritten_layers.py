@@ -6,21 +6,9 @@ import torch.nn.functional as F
 def safe_divide(a, b) -> object:
     ## stolen from https://github.com/hila-chefer/Transformer-Explainability
     ## Thanks Hila Chefer
-    # b[0,0] = -5
-    # b[0,1] = 1e-10
-    # b[0,2] = -1e-10
-    # b[0,3] = 5
-    # b[0,4] = 0
-    # b = b[0,:5]
 
     ## avoid dividing with a very low number
     ## retain the sign of each unit
-
-    ## TA:
-    # if x >= eps: x
-    # if 0<=x<eps: +eps
-    # if x<-eps: x
-    # if -eps<=x<0: -eps
 
     den = b.clamp(min=1e-9) + b.clamp(max=1e-9)
     den = den + den.eq(0).type(den.type()) * 1e-9
@@ -41,13 +29,8 @@ def forward_hook(self, input, output):
 
     self.output = output
 
-### Inherit nn.Module wheen possible
-
-
 
 class RelProp(nn.Module):
-    ## TODO why? /2
-
     def __init__(self):
         super(RelProp, self).__init__()
         # if not self.training:
@@ -55,24 +38,6 @@ class RelProp(nn.Module):
 
     def relevance_propagation(self, R):
         return R
-
-class RelPropSimple(RelProp):
-    ## TODO why? /2
-
-    def relevance_propagation(self, R):
-        Z = self.forward(self.input)
-        S = safe_divide(R, Z)
-        # C = self.gradprop(Z, self.X, S)
-        C = torch.autograd.grad(Z,  self.input, S, retain_graph=False)
-
-
-        if torch.is_tensor(self.input) == False:
-            outputs = []
-            outputs.append(self.input[0] * C[0])
-            outputs.append(self.input[1] * C[1])
-        else:
-            outputs = self.input * (C[0])
-        return outputs
 
 class Conv2d(nn.Conv2d, RelProp):
 
@@ -86,11 +51,25 @@ class Add(nn.Module): ## Change when implementing  Rel_pro
     def forward(self, inputs):
         return torch.add(*inputs)
 
-    def test_funct(self):
-        print("")
+    ###### NEW ######
+    def relevance_propagation(self, relevance):
+        sum_relevance = relevance.sum()
+        layer_out = self.forward(self.X)
+        RL_div = safe_divide(relevance, layer_out)
+        gradients = torch.autograd.grad(layer_out, self.X, RL_div, retain_graph=True)
+        n_relevances = len(gradients)
 
-    #TODO REL_PROP
+        relprop_mul = [self.X[i] * gradients[i] for i in range(n_relevances)]   # out * grad
+        relprop_sum = [relprop_mul[i].sum() for i in range(n_relevances)]       # (out * grad).sum
+        relprop_abs = [relprop_sum[i].abs() for i in range(n_relevances)]       # |(out * grad).sum|
+        relprop_abs_sum = 0
+        for i in range(len(relprop_abs)):
+            relprop_abs_sum += relprop_abs[i]                                   # SUM[|(out * grad).sum|]
 
+        relprop_out = [safe_divide(relprop_abs[i], relprop_abs_sum) * sum_relevance for i in range(n_relevances)]
+        relprop_out = [relprop_mul[i] * safe_divide(relprop_out[i], relprop_sum[i]) for i in range(n_relevances)]
+
+        return relprop_out
 
 class Clone(RelProp): ## Change when implementing  Rel_pro
 
@@ -103,7 +82,14 @@ class Clone(RelProp): ## Change when implementing  Rel_pro
 
         return clone_list
 
-    #TODO REL_PROP
+    ###### NEW ######
+    def relevance_propagation(self, relevance):
+        layer_out = self.forward(self.X, self.num)
+        RL_div = [safe_divide(rel, out) for rel, out in zip(relevance, layer_out)]
+        relprop_out = torch.autograd.grad(layer_out, self.X, RL_div, retain_graph=True)
+        relprop_out = self.X * relprop_out[0]
+
+        return relprop_out
 
 class Linear(nn.Linear, RelProp):
 
@@ -131,7 +117,7 @@ class Linear(nn.Linear, RelProp):
 
     #TODO REL_PROP
 
-class Matmul(RelPropSimple):
+class Matmul(nn.Module):
 
     def __init__(self, transpose=False):
         super().__init__()
