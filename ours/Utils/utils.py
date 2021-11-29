@@ -16,6 +16,15 @@ def set_seeds(seed):
     return
 
 
+def min_max_normalize(image):
+    image_min = np.min(image)
+    image_max = np.max(image)
+
+    image = (image-image_min) / (image_max-image_min)# + 1e-6) ## safe division
+
+    return image
+
+
 class ImageNetVal(Dataset):
 
     ### Overwriting some functions of Dataset build in class
@@ -32,10 +41,16 @@ class ImageNetVal(Dataset):
 
     def __getitem__(self, idx):
 
+
         current_path = self.img_names[idx]
         img_id = current_path.split("/")[-1]
 
         img_orig = Image.open(current_path)
+        n_channels = img_orig.layers
+
+        if n_channels == 1:
+            img_orig = img_orig.convert(mode='RGB')
+
         img = self.transform(img_orig)
 
         label = torch.IntTensor([self.labels_dict[img_id]])
