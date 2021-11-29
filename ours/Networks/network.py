@@ -300,8 +300,6 @@ class Mlp(nn.Module):
         self.dropout = Dropout(dropout)
         self.gelu = GELU()
 
-        # TODO rel_prop
-
     def forward(self, x):
         ## FC1
         x = self.fc1(x)
@@ -314,14 +312,18 @@ class Mlp(nn.Module):
 
         return x
 
-    ############################ HILA CHEFER ################################
-    def relevance_propagation(self, cam, **kwargs):
-        cam = self.dropout.relevance_propagation(cam, **kwargs)
-        cam = self.fc2.relevance_propagation(cam, **kwargs)
-        cam = self.gelu.relevance_propagation(cam, **kwargs)
-        cam = self.fc1.relevance_propagation(cam, **kwargs)
-        return cam
-    ############################# HILA CHEFER ###############################
+    def relevance_propagation(self, relevance):
+        ## FC2
+        relevance = self.dropout.relevance_propagation(relevance)
+        relevance = self.fc2.relevance_propagation(relevance)
+
+        ## FC1
+        relevance = self.dropout.relevance_propagation(relevance)
+        relevance = self.gelu.relevance_propagation(relevance)
+        relevance = self.fc1.relevance_propagation(relevance)
+
+        return relevance
+
 
 class Block(nn.Module):
 
