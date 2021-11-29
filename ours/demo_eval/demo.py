@@ -5,10 +5,12 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-# from utils import *
-from ours.Utils.utils import *
+from utils import *
+# from ours.Utils.utils import *
 
-from ours.Networks.network import ViT_model
+from network import ViT_model
+
+
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
@@ -23,7 +25,7 @@ import pickle
 
 dict = {}
 
-# with open(r'C:\Users\georg\PycharmProjects\Transformer-Explainability\val_labels.txt') as file:
+# with open('C:/Users/johny/Desktop/Transformer-Explainability-main/Transformer-Explainability-main/val_labels.txt') as file:
 #     lines = file.readlines()
 #     lines = [line.rstrip() for line in lines]
 #     for current_line in lines:
@@ -36,8 +38,8 @@ dict = {}
 #     pickle.dump(dict, f)
 
 # loading
-with open(args.labels_dict, 'rb') as f:
-    ret_di = pickle.load(f)
+# with open(args.labels_dict, 'rb') as f:
+#     ret_di = pickle.load(f)
 
 normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 transform = transforms.Compose([
@@ -57,7 +59,7 @@ val_loader = ImageNetVal(args.val_set, args.labels_dict, args.device, transform)
 val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
 
 ## Initialize model
-model = ViT_model().to(args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
+model = ViT_model(device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
 model.load_pretrained("saved_weights.pth")
 
 # (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
@@ -65,12 +67,14 @@ model.load_pretrained("saved_weights.pth")
 
 for index, data in enumerate(val_loader):
 
+    print(index/len(val_loader))
+
     ## TODO model
     img = data[0]
     label = data[1]
 
     # preds = model(img)
 
-    model.extract_LRP(img)
+    explainability_cue = model.extract_LRP(img)
 
-    print("DONE")
+    print("")
