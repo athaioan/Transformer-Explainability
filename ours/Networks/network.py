@@ -1,11 +1,11 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-# from overwritten_layers import *   # Ioannis
-# from utils import *   # Ioannis
+from overwritten_layers import *
+from utils import *
 from einops import rearrange
-from ours.Utils.utils import *   # Georgios
-from ours.Networks.overwritten_layers import *   # Georgios
+# from ours.Utils.utils import *
+
 
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
@@ -48,6 +48,7 @@ class ViT_model(nn.Module):
 
 
     def forward(self, x):
+
         batch_size = x.shape[0]
         x = self.patch_embed(x)
 
@@ -64,13 +65,27 @@ class ViT_model(nn.Module):
         x = self.pool(x, dim=1, index=torch.tensor(0, device=x.device)) ## retrieve the cls
         x = x.squeeze(1)
         x = self.head(x)
+
         return x
 
     def store_input_grad(self, grad):
         self.input_grad = grad
 
+    def compute_att_rollout(self, all_relevances):
+        b = 1 # only batch size of one is supported
+        n = all_relevances[-1].shape[0]
 
-    def relevance_progation(self, one_hot_label, start_layer=0):
+        I = torch.eye(n).to(self.device)
+        ## eq 13
+        A = [all_relevances[index]+I for index in range(len(all_relevances))]
+
+        att_rollout = A[0]
+        for index in range(1,len(all_relevances)):
+            att_rollout = A[index].matmul(att_rollout)
+
+        return att_rollout
+
+    def relevance_propagation(self, one_hot_label):
 
         ## from top to bottom
         relevance = self.head.relevance_propagation(one_hot_label)
@@ -80,17 +95,32 @@ class ViT_model(nn.Module):
         for current_block in reversed(self.blocks):
             relevance = current_block.relevance_propagation(relevance)
 
-            # ## for purposes of evaluating the attention rel_prop without having block's
-            # ## rel_pro beforehand
-            # relevance = torch.load("tensor.pt").to(self.device) ## loading the
-            # ## input relevance at attention as generated from her implementation
-            # relevance = current_block.attn.relevance_propagation(relevance)
-            # print("")
+        all_relevances = []
+        ## transformer_attribution
+        for current_block in self.blocks:
+            current_grad = current_block.attn.get_att_grad()
+            current_relevance = current_block.attn.get_att_relevance()
+            current_grad = current_grad.squeeze(0)
+            current_relevance = current_relevance.squeeze(0)
+            current_relevance *= current_grad
 
-        return relevance
+            ## considering only (+)
+            current_relevance = current_relevance.clamp(min=0)
+
+            ## averaging across the head dimension in accordance to Eq. 13
+            current_relevance = current_relevance.mean(dim=0)
+
+            all_relevances.append(current_relevance)
+
+        att_rollout = self.compute_att_rollout(all_relevances)
+
+        ## cls token
+        att_rollout = att_rollout[0,1:]
+
+        return att_rollout
 
 
-    def extract_LRP(self, input, class_indices = None, start_layer=0):
+    def extract_LRP(self, input, class_indices = None):
 
         pred = self(input)
 
@@ -108,10 +138,23 @@ class ViT_model(nn.Module):
         self.zero_grad()
         one_hot.backward(retain_graph=True) ## Register_hooks are excecuted in here
 
-        cam = self.relevance_progation(torch.tensor(one_hot_label).to(input.device),
-                                 start_layer=start_layer)
+        att_rollout = self.relevance_propagation(torch.tensor(one_hot_label).to(input.device))
 
-        return cam
+
+        ## reshaping att_rollout
+        cue_size = int(self.patch_embed.n_patches ** (0.5))
+        explainability_cue = att_rollout.reshape(1, 1,cue_size, cue_size)
+
+        ## scaling to input's dimensions
+        input_size = self.img_size[0]
+        explainability_cue = torch.nn.functional.interpolate(
+            explainability_cue, scale_factor=input_size//cue_size, mode='bilinear')[0,0]
+
+        explainability_cue = explainability_cue.data.cpu().numpy()
+
+        explainability_cue = min_max_normalize(explainability_cue)
+
+        return explainability_cue
 
 
 
@@ -300,6 +343,8 @@ class Mlp(nn.Module):
         self.dropout = Dropout(dropout)
         self.gelu = GELU()
 
+
+
     def forward(self, x):
         ## FC1
         x = self.fc1(x)
@@ -323,7 +368,6 @@ class Mlp(nn.Module):
         relevance = self.fc1.relevance_propagation(relevance)
 
         return relevance
-
 
 class Block(nn.Module):
 
@@ -354,7 +398,24 @@ class Block(nn.Module):
         self.clone1 = Clone()
         self.clone2 = Clone()
 
-    def forward(self, x):
+    ###### GM NEW ###### todo --> remove comment after explaining
+    def relevance_propagation(self, relevance):
+        (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance)
+        relevance_dupl = self.mlp.relevance_propagation(relevance_dupl)
+        relevance_dupl = self.norm2.relevance_propagation(relevance_dupl)
+        relevance = self.clone2.relevance_propagation((relevance, relevance_dupl))
+
+        (relevance, relevance_dupl) = self.add1.relevance_propagation(relevance)
+        relevance_dupl = self.attn.relevance_propagation(relevance_dupl)
+        relevance_dupl = self.norm1.relevance_propagation(relevance_dupl)
+        relevance = self.clone1.relevance_propagation((relevance, relevance_dupl))
+
+        return relevance
+
+
+
+    def forward(self,x):
+
         x1, x2 = self.clone1(x, 2)
         x2 = self.norm1(x2)
         x2 = self.attn(x2)
@@ -366,23 +427,3 @@ class Block(nn.Module):
         x = self.add2([x1, x2])
 
         return x
-
-    ###### GM NEW ###### todo --> remove comment after explaining
-    def relevance_propagation(self, relevance, **kwargs):
-        (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance, **kwargs)
-        # relevance_dupl = self.mlp.relevance_propagation(relevance_dupl, **kwargs)
-        relevance_dupl = self.norm2.relevance_propagation(relevance_dupl, **kwargs)
-        relevance = self.clone2.relevance_propagation((relevance, relevance_dupl), **kwargs)
-
-        (relevance, relevance_dupl) = self.add1.relevance_propagation(relevance, **kwargs)
-        relevance_temp = self.attn.relevance_propagation(relevance_dupl, **kwargs)
-
-        # todo -->  ask Ioannis
-        if(relevance_temp.shape != relevance_dupl.shape):
-            relevance_dupl = relevance_temp.reshape(relevance_temp.shape[1], relevance_temp.shape[2], relevance_temp.shape[3])
-            # print(str(relevance_temp.shape) + '!=' + str(relevance_dupl.shape))
-
-        relevance_dupl = self.norm1.relevance_propagation(relevance_dupl, **kwargs)
-        relevance = self.clone1.relevance_propagation((relevance, relevance_dupl), **kwargs)
-
-        return relevance
