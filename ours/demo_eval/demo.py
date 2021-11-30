@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-from utils import *
-# from ours.Utils.utils import *
+# from utils import * # Ioannis
+from ours.Utils.utils import * # Georgios
 
 from network import ViT_model
 
