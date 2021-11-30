@@ -1,11 +1,10 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-# from overwritten_layers import *   # Ioannis
-# from utils import *   # Ioannis
+from overwritten_layers import *
+from utils import *
 from einops import rearrange
-from ours.Utils.utils import *   # Georgios
-from ours.Networks.overwritten_layers import *   # Georgios
+# from ours.Utils.utils import *
 
 
 class ViT_model(nn.Module):
@@ -155,7 +154,7 @@ class ViT_model(nn.Module):
 
         explainability_cue = min_max_normalize(explainability_cue)
 
-        return explainability_cue
+        return explainability_cue, pred
 
 
 
