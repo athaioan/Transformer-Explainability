@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-# from utils import * # Ioannis
-from ours.Utils.utils import * # Georgios
+from utils import *
+# from ours.Utils.utils import *
 
 from network import ViT_model
 
@@ -17,6 +17,7 @@ args = SimpleNamespace(batch_size=1,
                        input_dim=224,
                        pretrained_weights="pretrained/vgg16_20M.pth",
                        val_set="ILSVRC2012_img_val",
+                       val_set_semg="gtsegs_ijcv.mat",
                        labels_dict="val_labels_dict.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
                        )
@@ -48,19 +49,26 @@ transform = transforms.Compose([
     normalize,
 ])
 
-# transform_gt_mask = transforms.Compose([
-#     transforms.Resize(args.input_dim),
-#     transforms.ToTensor(),
-# ])
+transform_gt_mask = transforms.Compose([
+    transforms.Resize((args.input_dim, args.input_dim)),
+    transforms.ToTensor(),
+])
 
 
-## Constructing the training loader
-val_loader = ImageNetVal(args.val_set, args.labels_dict, args.device, transform) ## loading val split (50.000)
+# # # ## Constructing the validation loader
+# val_loader = ImageNetVal(args.val_set, args.labels_dict, args.device, transform) ## loading val split (50.000)
+# val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
+
+# Constructing the validation segm loader
+val_loader = ImageNetSegm(args.val_set_semg, args.device, transform, transform_gt_mask) ## loading val split (50.000)
 val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
+
 
 ## Initialize model
 model = ViT_model(device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
 model.load_pretrained("saved_weights.pth")
+model.eval()
+model.zero_grad()
 
 # (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
 #                  n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0., n_block=12, mlp_ratio=4.)
@@ -72,9 +80,10 @@ for index, data in enumerate(val_loader):
     ## TODO model
     img = data[0]
     label = data[1]
+    # img_orig = data[2]
 
     # preds = model(img)
 
-    explainability_cue = model.extract_LRP(img)
+    explainability_cue, preds = model.extract_LRP(img)
 
     print("")
