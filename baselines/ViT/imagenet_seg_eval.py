@@ -62,7 +62,7 @@ parser.add_argument('--arc', type=str, default='vgg', metavar='N',
 parser.add_argument('--train_dataset', type=str, default='imagenet', metavar='N',
                     help='Testing Dataset')
 parser.add_argument('--method', type=str,
-                    default='grad_rollout',
+                    default='transformer_attribution', #default='grad_rollout',
                     choices=[ 'rollout', 'lrp','transformer_attribution', 'full_lrp', 'lrp_last_layer',
                               'attn_last_layer', 'attn_gradcam'],
                     help='')
@@ -91,7 +91,7 @@ parser.add_argument('--no-reg', action='store_true',
 parser.add_argument('--is-ablation', type=bool,
                     default=False,
                     help='')
-parser.add_argument('--imagenet-seg-path', type=str, required=True)
+parser.add_argument('--imagenet-seg-path', type=str, default=r'C:\Users\georg\Desktop\gtsegs_ijcv.mat', required=False)
 args = parser.parse_args()
 
 args.checkname = args.method + '_' + args.arc
