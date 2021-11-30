@@ -33,6 +33,20 @@ class Loader:
         self.transform_img = transform_img
         self.transform_seg_mask = transform_seg_mask
 
+        # Determine IDs
+        class_labels = []
+        for label in self.targets:
+            if(class_labels.count(label) == 0):
+                class_labels.append(label)
+
+        i = 0
+        self.labels_idx = {}
+        self.labels_map = {}
+        for label in class_labels:
+            self.labels_idx[label] = i
+            self.labels_map[i] = label
+            i += 1
+
     def __len__(self):
         return self.n_images
 
@@ -51,10 +65,7 @@ class Loader:
         seg_mask_pil = Image.fromarray(seg_mask_orig[0])
         seg_mask_trans = self.transform_seg_mask(seg_mask_pil)
 
-        # The label
-        label = self.targets[idx]
-
-        return img_trans.to(self.device), seg_mask_trans.to(self.device), label.to(self.device)
+        return img_trans.to(self.device), seg_mask_trans.to(self.device)
 
 path = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
 
