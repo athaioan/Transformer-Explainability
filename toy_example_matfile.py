@@ -23,7 +23,7 @@ class Loader:
         self.device = device
 
         # Extract arguments
-        self.n_images = data['n'].item()
+        self.n_images = int(data['n'].item())
         self.images = data['img']
         self.image_ids = data['id']
         self.seg_masks = data['gt']
@@ -37,7 +37,6 @@ class Loader:
         return self.n_images
 
     def __getitem__(self, idx):
-
         # The image with index idx
         img_orig = self.images[idx]
         n_channels = img_orig.shape[-1]     # todo --> check
@@ -49,14 +48,13 @@ class Loader:
 
         # The ground truth segmentation mask
         seg_mask_orig = self.seg_masks[idx]
-        seg_mask_pil = Image.fromarray(seg_mask_orig)
+        seg_mask_pil = Image.fromarray(seg_mask_orig[0])
         seg_mask_trans = self.transform_seg_mask(seg_mask_pil)
 
+        # The label
         label = self.targets[idx]
 
-        id = self.image_ids[idx]
-
-        return img_trans.to(self.device), seg_mask_trans.to(self.device), label.to(self.device), id.to(self.device)
+        return img_trans.to(self.device), seg_mask_trans.to(self.device), label.to(self.device)
 
 path = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
 
@@ -72,7 +70,7 @@ transform_gt_mask = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-piece_of_crap = Loader(path, args.device, transform, transform_gt_mask)
-one_image = piece_of_crap[0]
+dataLoader = Loader(path, args.device, transform, transform_gt_mask)
+
 
 print("DONE")
