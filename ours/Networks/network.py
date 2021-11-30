@@ -1,10 +1,11 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-from overwritten_layers import *
-from utils import *
+# from overwritten_layers import *   # Ioannis
+# from utils import *   # Ioannis
 from einops import rearrange
-# from ours.Utils.utils import *
+from ours.Utils.utils import *   # Georgios
+from ours.Networks.overwritten_layers import *   # Georgios
 
 
 class ViT_model(nn.Module):
