@@ -73,17 +73,27 @@ model.zero_grad()
 # (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
 #                  n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0., n_block=12, mlp_ratio=4.)
 
-for index, data in enumerate(val_loader):
+# for index, data in enumerate(val_loader):
+#
+#     print(index/len(val_loader))
+#
+#     ## TODO model
+#     img = data[0]
+#     label = data[1]
+#     # img_orig = data[2]
+#
+#     # preds = model(img)
+#
+#     explainability_cue, preds = model.extract_LRP(img)
+#
+#     eval_batch(explainability_cue, labels)
+#
+#     # correct, labeled, inter, union, ap, f1, pred, target = eval_batch(images, labels, model, batch_idx)
+#
+#
+#     print("")
 
-    print(index/len(val_loader))
 
-    ## TODO model
-    img = data[0]
-    label = data[1]
-    # img_orig = data[2]
+pixAcc, mIoU, mAp = model.extract_metrics(val_loader)
 
-    # preds = model(img)
-
-    explainability_cue, preds = model.extract_LRP(img)
-
-    print("")
+print(pixAcc, mIoU, mAp)
