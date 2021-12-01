@@ -5,6 +5,7 @@ import os
 from PIL import Image
 import matplotlib.pyplot as plt
 import math
+import mat73
 
 def set_seeds(seed):
     # author: Ioannis
@@ -56,6 +57,50 @@ class ImageNetVal(Dataset):
         label = torch.IntTensor([self.labels_dict[img_id]])
 
         return img.to(self.device), label.to(self.device)
+
+
+class ImageNetSegm:
+    def __init__(self, path, device, transform_img, transform_seg_mask):
+        # Load the data
+        data = mat73.loadmat(path)
+        data = data['value']
+
+        # Store the device
+        self.device = device
+
+        # Extract arguments
+        self.n_images = int(data['n'].item())
+        self.images = data['img']
+        self.image_ids = data['id']
+        self.seg_masks = data['gt']
+
+        # Specify transforms
+        self.transform_img = transform_img
+        self.transform_seg_mask = transform_seg_mask
+
+    def __len__(self):
+        return self.n_images
+
+    def __getitem__(self, idx):
+        # The image with index idx
+        img_orig = self.images[idx]
+        if len(img_orig.shape) != 3:
+            img_orig = img_orig.convert(mode='RGB')
+
+        img_orig = Image.fromarray(img_orig)
+        ## normalizing original image
+        img_trans = self.transform_img(img_orig)
+
+        ## resizing original image
+        img_orig = self.transform_seg_mask(img_orig)
+
+        ## resizing GT segmentation mask
+        seg_mask_orig = self.seg_masks[idx]
+        seg_mask_orig = Image.fromarray(seg_mask_orig[0])
+        seg_mask_trans = self.transform_seg_mask(seg_mask_orig)
+
+
+        return img_trans.to(self.device), seg_mask_trans.to(self.device), img_orig.to(self.device)
 
 
 

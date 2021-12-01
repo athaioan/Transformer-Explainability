@@ -7,7 +7,6 @@ from einops import rearrange
 from ours.Utils.utils import *   # Georgios
 from ours.Networks.overwritten_layers import *   # Georgios
 
-
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
                  n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
@@ -155,7 +154,7 @@ class ViT_model(nn.Module):
 
         explainability_cue = min_max_normalize(explainability_cue)
 
-        return explainability_cue
+        return explainability_cue, pred
 
 
 
@@ -399,7 +398,6 @@ class Block(nn.Module):
         self.clone1 = Clone()
         self.clone2 = Clone()
 
-    ###### GM NEW ###### todo --> remove comment after explaining
     def relevance_propagation(self, relevance):
         (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance)
         relevance_dupl = self.mlp.relevance_propagation(relevance_dupl)
@@ -412,8 +410,6 @@ class Block(nn.Module):
         relevance = self.clone1.relevance_propagation((relevance, relevance_dupl))
 
         return relevance
-
-
 
     def forward(self,x):
 
