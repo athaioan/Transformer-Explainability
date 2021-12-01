@@ -5,12 +5,10 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-from utils import *
-# from ours.Utils.utils import *
-
-from network import ViT_model
-
-
+# from utils import * # Ioannis
+from ours.Utils.utils import * # Georgios
+# from network import ViT_model # Ioannis
+from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
@@ -21,6 +19,11 @@ args = SimpleNamespace(batch_size=1,
                        labels_dict="val_labels_dict.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
                        )
+
+##### Georgios computer
+args.val_set_semg = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
+#######################
+
 
 import pickle
 

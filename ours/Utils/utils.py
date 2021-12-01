@@ -8,8 +8,10 @@ import math
 import mat73
 
 
-from iou import IoU
-from metrices import *
+# from iou import IoU # Ioannis
+# from metrices import * # Ioannis
+from ours.Utils.iou import *   # Georgios
+from ours.Utils.metrices import *   # Georgios
 
 
 
