@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 import math
 import mat73
 
+
+from iou import IoU
+from metrices import *
+
+
+
 def set_seeds(seed):
     # author: Ioannis
     torch.manual_seed(seed)
@@ -140,3 +146,56 @@ def no_grad_trunc_normal_(tensor, mean=0, std=1., a=-2., b=2.):
         # Clamp to ensure it's in the proper range
         tensor.clamp_(min=a, max=b)
         return tensor
+
+
+######### metrics
+
+def eval_batch(Res, labels):
+    ## stolen from https://github.com/hila-chefer/Transformer-Explainability
+    ## Thanks Hila Chefer
+
+    # threshold between FG and BG is the mean
+    Res = (Res - Res.min()) / (Res.max() - Res.min())
+
+    ret = Res.mean()
+
+    Res_1 = Res.gt(ret).type(Res.type())
+    Res_0 = Res.le(ret).type(Res.type())
+
+    Res_1_AP = Res
+    Res_0_AP = 1 - Res
+    ######### ???????????????????????????????????
+    Res_1[Res_1 != Res_1] = 0
+    Res_0[Res_0 != Res_0] = 0
+    Res_1_AP[Res_1_AP != Res_1_AP] = 0
+    Res_0_AP[Res_0_AP != Res_0_AP] = 0
+
+    # TEST
+    pred = Res.clamp(0) / Res.max()
+    pred = pred.view(-1).data.cpu().numpy()
+    target = labels.view(-1).data.cpu().numpy()
+    # print("target", target.shape)
+
+    output = torch.cat((Res_0.unsqueeze(0), Res_1.unsqueeze(0)), 0)
+    output_AP = torch.cat((Res_0_AP.unsqueeze(0), Res_1_AP.unsqueeze(0)), 0)
+
+    # Evaluate Segmentation
+    batch_inter, batch_union, batch_correct, batch_label, batch_ap = 0, 0, 0, 0, 0
+
+    # Segmentation resutls
+    correct, labeled = batch_pix_accuracy(output.data.cpu(), labels[0, 0])
+    ## labeled: all positive pixels in the groundtruth
+    ## correct: all positive pixels in the groundtruth that were also predicted as positive (larger than the mean)
+
+    inter, union = batch_intersection_union(output.data.cpu(), labels[0, 0], 2)
+    batch_correct += correct
+    batch_label += labeled
+    batch_inter += inter
+    batch_union += union
+    # print("output", output.shape)
+    # print("ap labels", labels.shape)
+    # ap = np.nan_to_num(get_ap_scores(output, labels))
+    ap = np.nan_to_num(get_ap_scores(output_AP.unsqueeze(0), labels[0]))
+    batch_ap += ap
+
+    return batch_correct, batch_label, batch_inter, batch_union, batch_ap, pred, target
