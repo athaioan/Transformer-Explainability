@@ -108,7 +108,8 @@ if __name__ == "__main__":
                         default=1,
                         help='')
     parser.add_argument('--method', type=str,
-                        default='grad_rollout',
+                        #default='grad_rollout',
+                        default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
                                  'attn_last_layer', 'attn_gradcam'],
                         help='')
@@ -144,7 +145,8 @@ if __name__ == "__main__":
                         default=False,
                         help='')
     parser.add_argument('--imagenet-validation-path', type=str,
-                        required=True,
+                        default=r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets',
+                        required=False,
                         help='')
     args = parser.parse_args()
 
