@@ -5,10 +5,11 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-# from utils import * # Ioannis
-from ours.Utils.utils import * # Georgios
-# from network import ViT_model # Ioannis
-from ours.Networks.network import ViT_model # Georgios
+from utils import *
+# from ours.Utils.utils import *
+
+from network import ViT_model
+
 
 
 ### Setting arguments
@@ -24,10 +25,6 @@ args = SimpleNamespace(batch_size=1,
 import pickle
 
 dict = {}
-
-##### Georgios computer
-args.val_set_semg = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
-#######################
 
 # with open('C:/Users/johny/Desktop/Transformer-Explainability-main/Transformer-Explainability-main/val_labels.txt') as file:
 #     lines = file.readlines()
@@ -76,17 +73,27 @@ model.zero_grad()
 # (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
 #                  n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0., n_block=12, mlp_ratio=4.)
 
-for index, data in enumerate(val_loader):
+# for index, data in enumerate(val_loader):
+#
+#     print(index/len(val_loader))
+#
+#     ## TODO model
+#     img = data[0]
+#     label = data[1]
+#     # img_orig = data[2]
+#
+#     # preds = model(img)
+#
+#     explainability_cue, preds = model.extract_LRP(img)
+#
+#     eval_batch(explainability_cue, labels)
+#
+#     # correct, labeled, inter, union, ap, f1, pred, target = eval_batch(images, labels, model, batch_idx)
+#
+#
+#     print("")
 
-    print(index/len(val_loader))
 
-    ## TODO model
-    img = data[0]
-    label = data[1]
-    # img_orig = data[2]
+pixAcc, mIoU, mAp = model.extract_metrics(val_loader)
 
-    # preds = model(img)
-
-    explainability_cue, preds = model.extract_LRP(img)
-
-    print("")
+print(pixAcc, mIoU, mAp)
