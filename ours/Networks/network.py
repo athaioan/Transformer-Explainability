@@ -154,7 +154,9 @@ class ViT_model(nn.Module):
 
         explainability_cue = min_max_normalize(explainability_cue)
 
-        return explainability_cue, pred
+        explainability_cue = torch.from_numpy(explainability_cue)
+
+        return explainability_cue.to(self.device), pred
 
 
 
@@ -173,6 +175,38 @@ class ViT_model(nn.Module):
         model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
 
+
+    def extract_metrics(self, dataloader):
+        ## stolen from https://github.com/hila-chefer/Transformer-Explainability
+        ## Thanks Hila Chefer
+
+        predictions, targets = [], []
+        total_inter, total_union, total_correct, total_label = np.int64(0), np.int64(0), np.int64(0), np.int64(0)
+        total_ap = []
+
+        for _, data in enumerate(dataloader):
+            img = data[0]
+            label = data[1]
+
+            explainability_cue, preds = self.extract_LRP(img)
+
+            correct, labeled, inter, union, ap, pred, target = eval_batch(explainability_cue, label)
+
+            predictions.append(pred)
+            targets.append(target)
+
+            total_correct += correct.astype('int64')
+            total_label += labeled.astype('int64')
+            total_inter += inter.astype('int64')
+            total_union += union.astype('int64')
+            total_ap += [ap]
+            pixAcc = np.float64(1.0) * total_correct / (np.spacing(1, dtype=np.float64) + total_label)
+            IoU = np.float64(1.0) * total_inter / (np.spacing(1, dtype=np.float64) + total_union)
+            mIoU = IoU.mean()
+            mAp = np.mean(total_ap)
+            print("")
+
+        return pixAcc, mIoU, mAp
 
 
 
@@ -427,3 +461,4 @@ class Block(nn.Module):
         x = self.add2([x1, x2])
 
         return x
+
