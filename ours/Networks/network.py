@@ -175,8 +175,6 @@ class ViT_model(nn.Module):
 
         for index, data in enumerate(dataloader):
 
-            if index > 5:
-                break
             img = data[1]
             label = data[2]
 
@@ -210,8 +208,6 @@ class ViT_model(nn.Module):
 
             for index, data in enumerate(dataloader):
 
-                if index> 5:
-                    break
                 img = data[1]
                 label = data[2]
 
