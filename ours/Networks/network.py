@@ -1,19 +1,24 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-# from overwritten_layers import *  # Ioannis
+from overwritten_layers import *
 from utils import *
 from einops import rearrange
-# from ours.Utils.utils import * # Ioannis
-from ours.Utils.utils import *   # Georgios
-from ours.Networks.overwritten_layers import *   # Georgios
-
+# from ours.Utils.utils import *   # Georgios
+# from ours.Networks.overwritten_layers import *   # Georgios
 
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
                  n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
-                 device="cuda"):
+                 device="cuda", max_epochs=10):
         super(ViT_model, self).__init__()
+
+        self.train_history = {"loss": []}
+        self.val_history = {"loss": []}
+        self.min_val = np.inf
+
+        self.current_epoch = 0
+        self.max_epochs = max_epochs
 
         self.device = device
         self.n_classes = n_classes
@@ -58,7 +63,8 @@ class ViT_model(nn.Module):
         x = torch.cat((cls_token, x), dim=1)
         x = self.add([x, self.pos_embed])# x+= self.positional_embed
 
-        x.register_hook(self.store_input_grad) ## When computing the grad wrt to the input x, store that grad to the model.input_grad
+        if x.requires_grad:
+            x.register_hook(self.store_input_grad) ## When computing the grad wrt to the input x, store that grad to the model.input_grad
 
         for current_block in self.blocks:
             x = current_block(x)
@@ -71,12 +77,12 @@ class ViT_model(nn.Module):
         return x
 
     def store_input_grad(self, grad):
+        print("")
         self.input_grad = grad
 
     def compute_att_rollout(self, all_relevances):
         b = 1 # only batch size of one is supported
         n = all_relevances[-1].shape[0]
-
         I = torch.eye(n).to(self.device)
         ## eq 13
         A = [all_relevances[index]+I for index in range(len(all_relevances))]
@@ -84,8 +90,8 @@ class ViT_model(nn.Module):
         att_rollout = A[0]
         for index in range(1,len(all_relevances)):
             att_rollout = A[index].matmul(att_rollout)
-
         return att_rollout
+
 
     def relevance_propagation(self, one_hot_label):
 
@@ -160,7 +166,88 @@ class ViT_model(nn.Module):
 
         return explainability_cue.to(self.device), pred
 
+    def train_epoch(self, dataloader, optimizer):
 
+
+        train_loss = 0
+        self.train()
+        self.current_epoch += 1
+
+        for index, data in enumerate(dataloader):
+
+            if index > 5:
+                break
+            img = data[1]
+            label = data[2]
+
+            x = self(img)
+
+            loss = F.multilabel_soft_margin_loss(x, label)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            ### adding batch loss into the overall loss
+            train_loss += loss
+
+            ### Printing epoch results
+            print('Train Epoch: {}/{}\n'
+                  'Step: {}/{}\n'
+                  'Batch ~ Loss: {:.4f}\n'
+                  .format(self.current_epoch, self.max_epochs,
+                          index + 1, len(dataloader),
+                          loss.data.cpu().numpy()))
+
+        self.train_history["loss"].append(train_loss / len(dataloader))
+        return
+
+    def val_epoch(self, dataloader):
+
+        val_loss = 0
+        self.eval()
+        with torch.no_grad():
+
+            for index, data in enumerate(dataloader):
+
+                if index> 5:
+                    break
+                img = data[1]
+                label = data[2]
+
+                x = self(img)
+
+                loss = F.multilabel_soft_margin_loss(x, label)
+
+                ### adding batch loss into the overall loss
+                val_loss += loss
+
+                ### Printing epoch results
+                print('Val Epoch: {}/{}\n'
+                      'Step: {}/{}\n'
+                      'Batch ~ Loss: {:.4f}\n'
+                      .format(self.current_epoch, self.max_epochs,
+                              index + 1, len(dataloader),
+                              loss.data.cpu().numpy()))
+
+            self.val_history["loss"].append(val_loss / len(dataloader))
+        return
+
+    def visualize_graph(self):
+
+        ## Plotting loss
+        plt.figure()
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Loss Graph")
+
+        plt.plot(np.arange(len(self.train_history["loss"])), self.train_history["loss"], label="train")
+        plt.plot(np.arange(len(self.val_history["loss"])), self.val_history["loss"], label="val")
+
+        plt.legend()
+        plt.savefig(self.session_name + "/loss.png")
+        plt.close()
+        return
 
     def load_pretrained(self, weights_path):
 
@@ -186,7 +273,10 @@ class ViT_model(nn.Module):
         total_inter, total_union, total_correct, total_label = np.int64(0), np.int64(0), np.int64(0), np.int64(0)
         total_ap = []
 
-        for _, data in enumerate(dataloader):
+        for index, data in enumerate(dataloader):
+
+            print(index/len(dataloader))
+
             img = data[0]
             label = data[1]
 
@@ -210,6 +300,58 @@ class ViT_model(nn.Module):
 
         return pixAcc, mIoU, mAp
 
+    def extract_AUC(self, dataloader, transform, positive=False, vis_class_top=True):
+
+        ## positive : True = when doing the positive perturbation and
+        ##            False = when doing the negative
+        ## vis_class_target: True = when extracting the explainability cue wrt the target class
+        ##                   False  = when extracting the explainability cue wrt the predicted class
+
+        pred_accuracy = np.zeros(10)
+
+        for index, data in enumerate(dataloader):
+
+            if index > 10:
+                break
+
+            img = data[0]
+            img_ = transform(img)
+            label = data[1]
+
+            vis_class = None if vis_class_top else label[0,0].data.cpu().numpy().tolist()
+            explainability_cue, preds = self.extract_LRP(img_, class_indices=vis_class)
+
+            pred_c = torch.argmax(preds).data.cpu().numpy()
+            target_c = label[0,0].data.cpu().numpy()
+            ####
+            pred_accuracy[0] += pred_c == target_c
+
+            if not positive:
+                ## negative
+                explainability_cue = - explainability_cue
+
+            explainability_cue = explainability_cue.flatten()
+            N_pixels = len(explainability_cue)
+
+            for current_step in range(1, 10):
+
+                current_img = img.clone() ## copying img
+                _, indices_perturb = torch.topk(explainability_cue, int(N_pixels * current_step/10))
+                indices_perturb = indices_perturb.repeat((3, 1)).unsqueeze(0)
+                current_img = current_img.flatten(start_dim=-2, end_dim=-1)
+                current_img = current_img.scatter_(-1, indices_perturb, 0)
+                current_img = current_img.reshape(img.size())
+
+                current_img = transform(current_img)
+
+                current_preds = self(current_img)
+                current_pred_c = torch.argmax(current_preds).data.cpu().numpy()
+                pred_accuracy[current_step] += current_pred_c == target_c
+
+        pred_accuracy /= len(dataloader)
+        AUC = np.trapz(pred_accuracy, dx=0.1)
+
+        return AUC
 
 
 class Img_to_patch(nn.Module):
@@ -237,7 +379,6 @@ class Attention_layer(nn.Module):
 
         self.n_heads = n_heads
         self.QKV_bias = QKV_bias
-
 
         head_dim = embed_size // n_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
@@ -314,7 +455,8 @@ class Attention_layer(nn.Module):
 
         self.store_att(att)
 
-        att.register_hook(self.store_att_grad)
+        if att.requires_grad:
+            att.register_hook(self.store_att_grad)
 
         # att = A*V
         x = self.matmul2([att, v])
