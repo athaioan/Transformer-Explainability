@@ -12,29 +12,25 @@ import pickle
 # from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
-args = SimpleNamespace(batch_size=4,
+args = SimpleNamespace(batch_size=8,
                        input_dim=448,
                        pretrained_weights="saved_weights.pth",
-                       epochs=20,
-                       lr=0.04,
-                       weight_decay=5e-4,
-                       voc12_img_folder="C:/Users/johny/Desktop/KTH COURSES/Deep Learning/Group90_Project/VOCdevkit/VOC2012/JPEGImages/",
-                       train_set="C:/Users/johny/Desktop/KTH COURSES/Deep Learning/Group90_Project/VOCdevkit/VOC2012/ImageSets/Segmentation/train_augm.txt",
-                       val_set="C:/Users/johny/Desktop/KTH COURSES/Deep Learning/Group90_Project/VOCdevkit/VOC2012/ImageSets/Segmentation/val.txt",
-                       labels_dict="C:/Users/johny/Desktop/KTH COURSES/Deep Learning/Group90_Project/VOCdevkit/VOC2012/cls_labels.npy",
+                       # pretrained_weights="PascalVOC_classification_2/stage_1.pth",
+                       epochs=50,
+                       lr=3e-2,
+                       weight_decay=1e-4,
+                       voc12_img_folder="VOCdevkit/VOC2012/JPEGImages/",
+                       train_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\train_augm.txt",
+                       val_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt",
+                       labels_dict="VOCdevkit/VOC2012/cls_labels.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
-                       step_update_lr=4,
+                       step_update_lr=1,
                        )
-
-lines= [ ]
-with open(r"C:\Users\johny\Desktop\KTH COURSES\Deep Learning\Group90_Project\VOCdevkit\VOC2012\ImageSets\Segmentation\train_aug.txt") as file:
-    for line in file:
-        line = line.strip() #or some other preprocessing
-        lines.append(line) #storing everything in memory!
 
 normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 train_loader = PascalVOC2012(args.train_set, args.labels_dict, args.voc12_img_folder, args.input_dim, args.device,
                               transform=transforms.Compose([
+                              transforms.Resize((args.input_dim, args.input_dim)),
                               transforms.ToTensor(),
                               transforms.RandomHorizontalFlip(p=0.5),
                               transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
@@ -44,6 +40,7 @@ train_loader = DataLoader(train_loader, batch_size=args.batch_size, shuffle=True
 
 val_loader = PascalVOC2012(args.val_set, args.labels_dict, args.voc12_img_folder, args.input_dim, args.device,
                               transform=transforms.Compose([
+                              transforms.Resize((args.input_dim, args.input_dim)),
                               transforms.ToTensor(),
                               normalize,
                               ]))
@@ -53,9 +50,16 @@ val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
 
 
 ## Initialize model
-model = ViT_model(img_size=(448, 448), patch_size=32, n_classes=20, max_epochs=args.epochs, device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
-model.load_pretrained("saved_weights.pth")
-model.session_name = "PascalVOC_classification"
+model = ViT_model(img_size=(448, 448), patch_size=32, n_heads=16, n_blocks=24, embed_size=1024, n_classes=20, max_epochs=args.epochs, device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
+
+
+# def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
+#              n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
+#              device="cuda", max_epochs=10):
+
+
+model.load_pretrained(args.pretrained_weights)
+model.session_name = "PascalVOC_classification_3"
 model.eval()
 
 if not os.path.exists(model.session_name):
@@ -72,9 +76,9 @@ optimizer = torch.optim.SGD(model.parameters(),
 
 for index in range(model.max_epochs):
 
-    if model.current_epoch % args.step_update_lr == args.step_update_lr - 1:
-        for g in optimizer.param_groups:
-            g['lr'] = g['lr'] / 3
+    for g in optimizer.param_groups:
+        g['lr'] = g['lr'] * (1-index/model.max_epochs)
+
 
 
     print("Training epoch...")

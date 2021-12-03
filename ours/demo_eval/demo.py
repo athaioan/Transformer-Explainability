@@ -4,19 +4,19 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
-# from utils import *
-# from network import ViT_model
+from utils import *
+from network import ViT_model
 import pickle
 
-from ours.Utils.utils import * # Georgios
-from ours.Networks.network import ViT_model # Georgios
+# from ours.Utils.utils import * # Georgios
+# from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
                        input_dim=224,
                        pretrained_weights="saved_weights.pth",
                        # val_set="ILSVRC2012_img_val",
-                       val_set="C:/Users/johny/Desktop/Transformer-Explainability-main/Transformer-Explainability-main\Dataset_1/val/n01440764/",
+                       val_set="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/ILSVRC2012_img_val",
                        val_set_semg="gtsegs_ijcv.mat",
                        labels_dict="val_labels_dict.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -50,43 +50,20 @@ val_loader = ImageNetVal(args.val_set, args.labels_dict, args.device, transform_
 val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
 
 # Constructing the validation segm loader
-# val_loader = ImageNetSegm(args.val_set_semg, args.device, transform, transform_gt_mask) ## loading val split (50.000)
-# val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
+val_loader_segm = ImageNetSegm(args.val_set_semg, args.device, transform, transform_gt_mask) ## loading val semgntation split (4.276)
+val_loader_segm = DataLoader(val_loader_segm, batch_size=args.batch_size, shuffle=False)
 
 
 ## Initialize model
-model = ViT_model(device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
+model = ViT_model(device=args.device)
 model.load_pretrained(args.pretrained_weights)
 model.eval()
 model.zero_grad()
 
-# (n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_dim=768,
-#                  n_heads=12, QKV_bias=False, att_dropout=0., out_dropout=0., n_block=12, mlp_ratio=4.)
 
-# for index, data in enumerate(val_loader):
-#
-#     print(index/len(val_loader))
-#
-#     ## TODO model
-#     img = data[0]
-#     label = data[1]
-#     # img_orig = data[2]
-#
-#     # preds = model(img)
-#
-#     explainability_cue, preds = model.extract_LRP(img)
-#
-#     eval_batch(explainability_cue, labels)
-#
-#     # correct, labeled, inter, union, ap, f1, pred, target = eval_batch(images, labels, model, batch_idx)
-#
-#
-#     print("")
-
-
-# pixAcc, mIoU, mAp = model.extract_metrics(val_loader)
-# print(pixAcc, mIoU, mAp)
-# 0.7971615078627627 0.6198494989665153 0.8604044712192599
+pixAcc, mIoU, mAp = model.extract_metrics(val_loader_segm)
+print(pixAcc, mIoU, mAp)
+# 0.7972802107022943 0.6198160110748642 0.8603164970095842
 
 
 AUC = model.extract_AUC(val_loader, normalize, positive=True, vis_class_top=True)
