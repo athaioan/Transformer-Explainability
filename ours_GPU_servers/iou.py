@@ -5,7 +5,7 @@ from confusionmatrix import ConfusionMatrix
 # from ours.Utils.confusionmatrix import * # Georgios
 # from ours.Utils.metric import * # Georgios
 
-class IoU(Metric):
+class IoU(metric.Metric):
     """Computes the intersection over union (IoU) per class and corresponding
     mean (mIoU).
 
