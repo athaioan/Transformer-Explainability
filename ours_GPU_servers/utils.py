@@ -9,10 +9,10 @@ import mat73
 from skimage.transform import resize
 
 
-# from iou import IoU
-# from metrices import *
-from ours.Utils.iou import *   # Georgios
-from ours.Utils.metrices import *   # Georgios
+from iou import IoU
+from metrices import *
+# from ours.Utils.iou import *   # Georgios
+# from ours.Utils.metrices import *   # Georgios
 
 
 def set_seeds(seed):
