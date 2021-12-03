@@ -49,6 +49,7 @@ class ViT_model(nn.Module):
 
         self.norm = LayerNorm(embed_size)
         self.head = Linear(self.embed_size, self.n_classes)
+
         self.pool = ClsSelect()
 
         self.to(self.device)
@@ -179,7 +180,7 @@ class ViT_model(nn.Module):
             label = data[2]
 
             x = self(img)
-
+            # explainability_cue, preds = self.extract_LRP(img)
             loss = F.multilabel_soft_margin_loss(x, label)
 
             optimizer.zero_grad()
@@ -187,7 +188,7 @@ class ViT_model(nn.Module):
             optimizer.step()
 
             ### adding batch loss into the overall loss
-            train_loss += loss
+            train_loss += loss.item()
 
             ### Printing epoch results
             print('Train Epoch: {}/{}\n'
@@ -195,7 +196,7 @@ class ViT_model(nn.Module):
                   'Batch ~ Loss: {:.4f}\n'
                   .format(self.current_epoch, self.max_epochs,
                           index + 1, len(dataloader),
-                          loss.data.cpu().numpy()))
+                          train_loss / (index + 1)))
 
         self.train_history["loss"].append(train_loss / len(dataloader))
         return
@@ -216,7 +217,7 @@ class ViT_model(nn.Module):
                 loss = F.multilabel_soft_margin_loss(x, label)
 
                 ### adding batch loss into the overall loss
-                val_loss += loss
+                val_loss += loss.item()
 
                 ### Printing epoch results
                 print('Val Epoch: {}/{}\n'
@@ -224,7 +225,7 @@ class ViT_model(nn.Module):
                       'Batch ~ Loss: {:.4f}\n'
                       .format(self.current_epoch, self.max_epochs,
                               index + 1, len(dataloader),
-                              loss.data.cpu().numpy()))
+                              val_loss/(index+1)))
 
             self.val_history["loss"].append(val_loss / len(dataloader))
         return
@@ -261,7 +262,7 @@ class ViT_model(nn.Module):
         self.load_state_dict(model_dict)
 
 
-    def extract_metrics(self, dataloader):
+    def extract_metrics(self, dataloader, vis_class_top=True):
         ## stolen from https://github.com/hila-chefer/Transformer-Explainability
         ## Thanks Hila Chefer
 
@@ -276,7 +277,9 @@ class ViT_model(nn.Module):
             img = data[0]
             label = data[1]
 
-            explainability_cue, preds = self.extract_LRP(img)
+            vis_class = None if vis_class_top else label[0,0].data.cpu().numpy().tolist()
+            explainability_cue, preds = self.extract_LRP(img, class_indices=vis_class)
+
 
             correct, labeled, inter, union, ap, pred, target = eval_batch(explainability_cue, label)
 
@@ -292,7 +295,6 @@ class ViT_model(nn.Module):
             IoU = np.float64(1.0) * total_inter / (np.spacing(1, dtype=np.float64) + total_union)
             mIoU = IoU.mean()
             mAp = np.mean(total_ap)
-            print("")
 
         return pixAcc, mIoU, mAp
 
@@ -306,9 +308,6 @@ class ViT_model(nn.Module):
         pred_accuracy = np.zeros(10)
 
         for index, data in enumerate(dataloader):
-
-            if index > 10:
-                break
 
             img = data[0]
             img_ = transform(img)
@@ -601,3 +600,4 @@ class Block(nn.Module):
         x = self.add2([x1, x2])
 
         return x
+

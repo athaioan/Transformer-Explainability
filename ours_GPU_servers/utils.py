@@ -16,6 +16,7 @@ from metrices import *
 
 
 def set_seeds(seed):
+    # author: Ioannis
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
@@ -239,10 +240,14 @@ class PascalVOC2012(Dataset):
     def __getitem__(self, idx):
         current_path = self.img_paths[idx]
 
-        img_orig = plt.imread(current_path)
-        img, window = pad_resize(img_orig, self.input_dim)
+        img_orig = Image.open(current_path)
+        # img, window = pad_resize(img_orig, self.input_dim)
 
-        img = self.transform(img)
+        n_channels = img_orig.layers
+        if n_channels == 1:
+            img_orig = img_orig.convert(mode='RGB')
+
+        img = self.transform(img_orig)
 
         ### resizing and padding the image to fix dimensions inputs
         orginal_shape = np.shape(img_orig)
@@ -250,4 +255,4 @@ class PascalVOC2012(Dataset):
         img_key = current_path.split("/")[-1][:-4]
         label = torch.from_numpy(self.labels_dict[img_key])
 
-        return current_path, img.to(self.device), label.to(self.device), window, orginal_shape
+        return current_path, img.to(self.device), label.to(self.device), orginal_shape
