@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 
-# from utils import * # Ioannis
-from ours.Utils.utils import * # Georgios
-# from network import ViT_model # Ioannis
-from ours.Networks.network import ViT_model # Georgios
+from utils import * # Ioannis
+# from ours.Utils.utils import * # Georgios
+from network import ViT_model # Ioannis
+# from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
