@@ -3,7 +3,7 @@ import torch
 import metric
 # from ours.Utils.metric import * # Georgios
 
-class ConfusionMatrix(Metric):
+class ConfusionMatrix(metric.Metric):
     """Constructs a confusion matrix for a multi-class classification problems.
     Does not support multi-label, multi-class problems.
     Keyword arguments:
