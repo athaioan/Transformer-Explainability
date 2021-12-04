@@ -6,6 +6,8 @@
 
 [Negative predicted (top) perturbation] 0.541301
 [Negative target perturbation]          0.550302
+[Negative predicted (top) perturbation] 0.17031100000000002
+[Negative target perturbation]          0.163869
 
 ------------------------ HILA ------------------------
 
