@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from overwritten_layers import *
 from utils import *
 from einops import rearrange
+import imageio
+
 # from ours.Utils.utils import *   # Georgios
 # from ours.Networks.overwritten_layers import *   # Georgios
 
@@ -129,7 +131,7 @@ class ViT_model(nn.Module):
         return att_rollout
 
 
-    def extract_LRP(self, input, class_indices = None):
+    def extract_LRP(self, input, class_indices = None, sqrt=False):
 
         pred = self(input)
 
@@ -159,7 +161,11 @@ class ViT_model(nn.Module):
         explainability_cue = torch.nn.functional.interpolate(
             explainability_cue, scale_factor=input_size//cue_size, mode='bilinear')[0,0]
 
+
         explainability_cue = explainability_cue.data.cpu().numpy()
+
+        if sqrt == True:
+            explainability_cue = np.sqrt(explainability_cue)
 
         explainability_cue = min_max_normalize(explainability_cue)
 
@@ -347,6 +353,107 @@ class ViT_model(nn.Module):
         AUC = np.trapz(pred_accuracy, dx=0.1)
 
         return AUC
+
+
+    def extract_LRP_for_affinity(self, dataloader, alpha_low=4, alpha_high=32,
+                                 alpha_low_folder = "crf_lows/", alpha_high_folder = "crf_highs/",
+                                 cam_folder = "cams/", pred_folder = "preds/"):
+
+        if not os.path.exists(alpha_low_folder):
+            os.makedirs(alpha_low_folder)
+
+        if not os.path.exists(alpha_high_folder):
+            os.makedirs(alpha_high_folder)
+
+        if not os.path.exists(cam_folder):
+            os.makedirs(cam_folder)
+
+        if not os.path.exists(pred_folder):
+            os.makedirs(pred_folder)
+
+
+        for index, data in enumerate(dataloader):
+
+            print(index/len(dataloader))
+
+            img_key = data[0][0].split("/")[-1][:-4]
+            img = data[1]
+            label = data[2]
+
+            img_orig = plt.imread(data[0][0])
+            img_orig_size = [i[0].data.cpu().numpy() for i in data[-1]]
+
+            explainability_pred = np.zeros((self.n_classes, img_orig_size[0],
+                                          img_orig_size[1]))
+
+            explainability_bg = np.ones((img_orig_size[0],
+                                          img_orig_size[1]))*0.2
+
+            explainability_LRPs = {}
+            vis_class = np.nonzero(label[0].data.cpu().numpy())[0]
+            for current_vis_class in vis_class:
+
+                for flip_flag in [0,1]:
+
+                    if flip_flag:
+                        current_explainability_cue_flipped, preds = self.extract_LRP(torch.flip(img, (0,3)) , class_indices=current_vis_class, sqrt=False)
+
+                        current_explainability_cue_flipped = torch.nn.Upsample((img_orig_size[0], img_orig_size[1]),
+                                                                       mode='bilinear') \
+                            (current_explainability_cue_flipped.view(1, 1, *current_explainability_cue_flipped.shape))
+
+                        current_explainability_cue_flipped = torch.flip(current_explainability_cue_flipped, (0,3))
+
+                        current_explainability_cue+=current_explainability_cue_flipped
+                        current_explainability_cue /=2
+                    else:
+                        current_explainability_cue, preds = self.extract_LRP(img,
+                                                                             class_indices=current_vis_class, sqrt=False)
+
+                        current_explainability_cue = torch.nn.Upsample((img_orig_size[0], img_orig_size[1]),
+                                                                        mode='bilinear') \
+                            (current_explainability_cue.view(1, 1, *current_explainability_cue.shape))
+
+                explainability_LRPs[current_vis_class] = current_explainability_cue.data.cpu().numpy()[0,0]
+                explainability_pred[current_vis_class] = current_explainability_cue.data.cpu().numpy()[0,0]
+
+            explainability_pred = np.concatenate((explainability_bg[None,...], explainability_pred))
+            explainability_pred = np.argmax(explainability_pred,axis=0)
+
+            ## save cam
+            np.save(cam_folder + img_key + ".npy", explainability_LRPs)
+
+            ## pred
+            imageio.imwrite(pred_folder + img_key + ".png", explainability_pred.astype(np.uint8))
+
+            ### confident foreground
+            LRP_v = np.array(tuple(explainability_LRPs.values()))
+            bg_v = (1 - np.max(LRP_v,axis=0))**alpha_low
+
+            v = np.concatenate((bg_v[None,...],LRP_v),axis=0)
+            crf_low = crf_inference(img_orig, v, labels=LRP_v.shape[0]+1)
+
+            crf_low_dict = {}
+            crf_low_dict[0] = crf_low[0]
+            for index, current_class in enumerate(vis_class):
+                crf_low_dict[current_class+1] = crf_low[index+1]
+
+            np.save(alpha_low_folder+img_key+".npy", crf_low_dict)
+
+            ### confident background
+            LRP_v = np.array(tuple(explainability_LRPs.values()))
+            bg_v = (1 - np.max(LRP_v, axis=0)) ** alpha_high
+
+            v = np.concatenate((bg_v[None, ...], LRP_v), axis=0)
+            crf_high = crf_inference(img_orig, v, labels=LRP_v.shape[0] + 1)
+
+            crf_high_dict = {}
+            crf_high_dict[0] = crf_high[0]
+            for index, current_class in enumerate(vis_class):
+                crf_high_dict[current_class + 1] = crf_high[index + 1]
+
+            np.save(alpha_high_folder + img_key + ".npy", crf_high_dict)
+
 
 
 class Img_to_patch(nn.Module):
