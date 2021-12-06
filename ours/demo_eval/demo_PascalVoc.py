@@ -12,13 +12,14 @@ import pickle
 # from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
-args = SimpleNamespace(batch_size=8,
+args = SimpleNamespace(batch_size=1,
                        input_dim=448,
-                       pretrained_weights="saved_weights.pth",
-                       # pretrained_weights="PascalVOC_classification_2/stage_1.pth",
-                       epochs=50,
-                       lr=3e-2,
+                       # pretrained_weights="saved_weights_VOC.pth",
+                       pretrained_weights="PascalVOC_classification_3/stage_1.pth",
+                       epochs=30,
+                       lr=5e-3,
                        weight_decay=1e-4,
+                       VocClassList="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/PascalVocClasses.txt",
                        voc12_img_folder="VOCdevkit/VOC2012/JPEGImages/",
                        train_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\train_augm.txt",
                        val_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt",
@@ -26,6 +27,7 @@ args = SimpleNamespace(batch_size=8,
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
                        step_update_lr=1,
                        )
+
 
 normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 train_loader = PascalVOC2012(args.train_set, args.labels_dict, args.voc12_img_folder, args.input_dim, args.device,
@@ -50,16 +52,11 @@ val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False)
 
 
 ## Initialize model
-model = ViT_model(img_size=(448, 448), patch_size=32, n_heads=16, n_blocks=24, embed_size=1024, n_classes=20, max_epochs=args.epochs, device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
-
-
-# def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
-#              n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
-#              device="cuda", max_epochs=10):
+model = ViT_model(img_size=(448, 448), patch_size=32, n_heads=16, n_blocks=24,  embed_size=1024, n_classes=20, max_epochs=args.epochs, device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
 
 
 model.load_pretrained(args.pretrained_weights)
-model.session_name = "PascalVOC_classification_3"
+model.session_name = "PascalVOC_classification_5"
 model.eval()
 
 if not os.path.exists(model.session_name):
@@ -74,29 +71,51 @@ optimizer = torch.optim.SGD(model.parameters(),
 
 
 
-for index in range(model.max_epochs):
-
-    for g in optimizer.param_groups:
-        g['lr'] = g['lr'] * (1-index/model.max_epochs)
-
-
-
-    print("Training epoch...")
-    model.train_epoch(train_loader, optimizer)
-
-    print("Validating epoch...")
-    model.val_epoch(val_loader)
-
-    model.visualize_graph()
-
-    if model.val_history["loss"][-1] < model.min_val:
-        print("Saving model...")
-        model.min_val = model.val_history["loss"][-1]
-
-        torch.save(model.state_dict(), model.session_name+"/stage_1.pth")
-
+# for index in range(model.max_epochs):
 #
-# ## Constructing the validation loader
-# val_loader = VOC2012Dataset(args.val_set, args.labels_dict, args.voc12_img_folder, args.input_dim)
-# val_loader = DataLoader(val_loader, batch_size=args.batch_size, shuffle=False) ## no point in shufflying the validation data
+#     for g in optimizer.param_groups:
+#         g['lr'] = args.lr * (1-index/model.max_epochs)
 #
+#
+#
+#     print("Training epoch...")
+#     model.train_epoch(train_loader, optimizer)
+#
+#     print("Validating epoch...")
+#     model.val_epoch(val_loader)
+#
+#     model.visualize_graph()
+#
+#     if model.val_history["loss"][-1] < model.min_val:
+#         print("Saving model...")
+#         model.min_val = model.val_history["loss"][-1]
+#
+#         torch.save(model.state_dict(), model.session_name+"/stage_1.pth")
+
+# with open(args.VocClassList) as f:
+#     VocClassList = f.readlines()
+#
+#
+#
+# for data in val_loader:
+#
+#     img = data[1]
+#     label = data[2]
+#
+#     vis_index= torch.argmax(label)
+#
+#
+#     explainability_cue, pred = model.extract_LRP_for_affinity(img, class_indices=vis_index)
+#
+#
+#
+#     plt.close("all")
+#     plt.figure()
+#     plt.imshow(explainability_cue.data.cpu().numpy())
+#     plt.figure()
+#     plt.imshow(img[0].data.cpu().numpy().transpose(1,2,0))
+#     print("Visualized class", VocClassList[vis_index])
+#     print("")
+
+
+model.extract_LRP_for_affinity(val_loader)

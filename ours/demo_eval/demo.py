@@ -61,9 +61,9 @@ model.eval()
 model.zero_grad()
 
 
-pixAcc, mIoU, mAp = model.extract_metrics(val_loader_segm)
-print(pixAcc, mIoU, mAp)
-# 0.7972802107022943 0.6198160110748642 0.8603164970095842
+# pixAcc, mIoU, mAp = model.extract_metrics(val_loader_segm)
+# print(pixAcc, mIoU, mAp)
+# # 0.7972802107022943 0.6198160110748642 0.8603164970095842
 
 
 AUC = model.extract_AUC(val_loader, normalize, positive=True, vis_class_top=True)
