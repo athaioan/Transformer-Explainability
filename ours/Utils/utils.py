@@ -256,3 +256,71 @@ class PascalVOC2012(Dataset):
         label = torch.from_numpy(self.labels_dict[img_key])
 
         return current_path, img.to(self.device), label.to(self.device), orginal_shape
+
+
+
+
+################### TODO implement ourselves
+
+def _fast_hist(label_true, label_pred, n_class):
+
+    # source https://github.com/Juliachang/SC-CAM
+    mask = (label_true >= 0) & (label_true < n_class)
+    hist = np.bincount(
+        n_class * label_true[mask].astype(int) + label_pred[mask],
+        minlength=n_class ** 2,
+    ).reshape(n_class, n_class)
+
+    return hist
+
+
+def scores(label_trues, label_preds, n_class):
+    # https://github.com/Juliachang/SC-CAM
+
+    hist = np.zeros((n_class, n_class))
+
+    for lt, lp in zip(label_trues, label_preds):
+        hist += _fast_hist(lt.flatten(), lp.flatten(), n_class)
+    acc = np.diag(hist).sum() / hist.sum()
+    acc_cls = np.diag(hist) / hist.sum(axis=1)
+    acc_cls = np.nanmean(acc_cls)
+    iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
+    valid = hist.sum(axis=1) > 0  # added
+    mean_iu = np.nanmean(iu[valid])
+    freq = hist.sum(axis=1) / hist.sum()
+    fwavacc = (freq[freq > 0] * iu[freq > 0]).sum()
+    cls_iu = dict(zip(range(n_class), iu))
+
+
+    return {
+        "Pixel Accuracy": acc,
+        "Mean Accuracy": acc_cls,
+        "Frequency Weighted IoU": fwavacc,
+        "Mean IoU": mean_iu,
+        "Class IoU": cls_iu,
+    }
+
+
+def crf_inference(img, probs, t=10, scale_factor=1, labels=21):
+    ## stolen from https://github.com/jiwoon-ahn/psa
+    ## Thanks Jiwoon Ahn
+
+
+    import pydensecrf.densecrf as dcrf
+    from pydensecrf.utils import unary_from_softmax
+
+
+    h, w = img.shape[:2]
+    n_labels = labels
+
+    d = dcrf.DenseCRF2D(w, h, n_labels)
+
+    unary = unary_from_softmax(probs)
+    unary = np.ascontiguousarray(unary)
+
+    d.setUnaryEnergy(unary)
+    d.addPairwiseGaussian(sxy=3/scale_factor, compat=3)
+    d.addPairwiseBilateral(sxy=80/scale_factor, srgb=13, rgbim=np.copy(img), compat=10)
+    Q = d.inference(t)
+
+    return np.array(Q).reshape((n_labels, h, w))
