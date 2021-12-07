@@ -5,6 +5,11 @@ from overwritten_layers import *
 from utils import *
 from einops import rearrange
 import imageio
+import os
+from collections import *
+from functools import partial
+import collections
+from itertools import repeat
 
 # from ours.Utils.utils import *   # Georgios
 # from ours.Networks.overwritten_layers import *   # Georgios
@@ -182,6 +187,7 @@ class ViT_model(nn.Module):
 
         for index, data in enumerate(dataloader):
 
+
             img = data[1]
             label = data[2]
 
@@ -354,10 +360,37 @@ class ViT_model(nn.Module):
 
         return AUC
 
+    def extract_mIoU(self, cam_folder, gt_folder):
+
+        cam_paths = os.listdir(cam_folder)
+
+        label_trues = []
+        label_preds = []
+        for index, current_cam_key in enumerate(cam_paths):
+
+            print("Step",index/len(cam_paths))
+
+            current_cam_path = cam_folder + "/" + current_cam_key
+            current_gt_path = gt_folder + "/" + current_cam_key
+
+            current_cam_pred = Image.open(current_cam_path)
+            current_cam_pred = np.array(current_cam_pred)
+
+            current_gt = Image.open(current_gt_path)
+            current_gt = np.array(current_gt)
+
+            label_preds.append(current_cam_pred)
+            label_trues.append(current_gt)
+
+        metrics = scores(label_trues, label_preds, self.n_classes+1)
+
+        return metrics
+
+
 
     def extract_LRP_for_affinity(self, dataloader, alpha_low=4, alpha_high=32,
-                                 alpha_low_folder = "crf_lows/", alpha_high_folder = "crf_highs/",
-                                 cam_folder = "cams/", pred_folder = "preds/"):
+                                 alpha_low_folder = "crf_lows2/", alpha_high_folder = "crf_highs2/",
+                                 cam_folder = "cams2/", pred_folder = "preds2/"):
 
         if not os.path.exists(alpha_low_folder):
             os.makedirs(alpha_low_folder)
@@ -708,3 +741,594 @@ class Block(nn.Module):
 
         return x
 
+
+
+class ViT_hybrid_model(ViT_model):
+
+    def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
+                 n_heads=12, QKV_bias=True, att_dropout=0., out_dropout=0., n_blocks=12, mlp_hidden_ratio=4.,
+                 device="cuda", max_epochs=10):
+
+        super(ViT_hybrid_model, self).__init__(n_classes=n_classes, img_size=img_size, patch_size=patch_size, in_ch=in_ch, embed_size=embed_size,
+                 n_heads=n_heads, QKV_bias=QKV_bias, att_dropout=att_dropout, out_dropout=out_dropout, n_blocks=n_blocks, mlp_hidden_ratio=mlp_hidden_ratio,
+                 device=device, max_epochs=max_epochs)
+
+        # self.resnet_backbone = ResNetV2(block_units=(3, 4, 9),
+        #                                  width_factor=1)
+        self.resnet_backbone = ResNetV2(
+            layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
+            preact=False, stem_type='same', conv_layer=StdConv2dSame)
+
+        self.in_ch = 1024
+
+        self.patch_size = 1
+
+        self.patch_embed = Img_to_patch((1,1), 1, self.in_ch , embed_size)
+
+        self.patch_embed.n_patches = (img_size[0] // 16) * (img_size[1] // 16)
+
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, embed_size))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_size))
+
+        self.to(self.device)
+
+
+    def forward(self, x):
+
+        batch_size = x.shape[0]
+
+        feat = self.resnet_backbone(x)
+
+        x = self.patch_embed(feat)
+
+        cls_token = self.cls_token.expand(batch_size, -1, -1)# from Phil Wang
+        x = torch.cat((cls_token, x), dim=1)
+        x = self.add([x, self.pos_embed])# x+= self.positional_embed
+
+        if x.requires_grad:
+            x.register_hook(self.store_input_grad) ## When computing the grad wrt to the input x, store that grad to the model.input_grad
+
+        for current_block in self.blocks:
+            x = current_block(x)
+
+        x = self.norm(x)
+        x = self.pool(x, dim=1, index=torch.tensor(0, device=x.device)) ## retrieve the cls
+        x = x.squeeze(1)
+        x = self.head(x)
+
+        return x
+
+
+
+#########################################################################
+def get_padding(kernel_size, stride, dilation=1):
+    padding = ((stride - 1) + dilation * (kernel_size - 1)) // 2
+    return padding
+
+# From PyTorch internals
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable):
+            return x
+        return tuple(repeat(x, n))
+    return parse
+
+to_2tuple = _ntuple(2)
+class SelectAdaptivePool2d(nn.Module):
+    """Selectable global pooling layer with dynamic input kernel size
+    """
+    def __init__(self, output_size=1, pool_type='fast', flatten=False):
+        super(SelectAdaptivePool2d, self).__init__()
+        self.pool_type = pool_type or ''  # convert other falsy values to empty string for consistent TS typing
+        self.flatten = nn.Flatten(1) if flatten else nn.Identity()
+        if pool_type == '':
+            self.pool = nn.Identity()  # pass through
+        elif pool_type == 'fast':
+            assert output_size == 1
+            self.pool = FastAdaptiveAvgPool2d(flatten)
+            self.flatten = nn.Identity()
+        elif pool_type == 'avg':
+            self.pool = nn.AdaptiveAvgPool2d(output_size)
+        elif pool_type == 'avgmax':
+            self.pool = AdaptiveAvgMaxPool2d(output_size)
+        elif pool_type == 'catavgmax':
+            self.pool = AdaptiveCatAvgMaxPool2d(output_size)
+        elif pool_type == 'max':
+            self.pool = nn.AdaptiveMaxPool2d(output_size)
+        else:
+            assert False, 'Invalid pool type: %s' % pool_type
+
+    def is_identity(self):
+        return not self.pool_type
+
+    def forward(self, x):
+        x = self.pool(x)
+        x = self.flatten(x)
+        return x
+
+    def feat_mult(self):
+        return adaptive_pool_feat_mult(self.pool_type)
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + 'pool_type=' + self.pool_type \
+               + ', flatten=' + str(self.flatten) + ')'
+
+def adaptive_pool_feat_mult(pool_type='avg'):
+    if pool_type == 'catavgmax':
+        return 2
+    else:
+        return 1
+
+
+class MaxPool2dSame(nn.MaxPool2d):
+    """ Tensorflow like 'SAME' wrapper for 2D max pooling
+    """
+    def __init__(self, kernel_size: int, stride=None, padding=0, dilation=1, ceil_mode=False):
+        kernel_size = to_2tuple(kernel_size)
+        stride = to_2tuple(stride)
+        dilation = to_2tuple(dilation)
+        super(MaxPool2dSame, self).__init__(kernel_size, stride, (0, 0), dilation, ceil_mode)
+
+    def forward(self, x):
+        x = pad_same(x, self.kernel_size, self.stride, value=-float('inf'))
+        return F.max_pool2d(x, self.kernel_size, self.stride, (0, 0), self.dilation, self.ceil_mode)
+
+
+def _create_pool(num_features, num_classes, pool_type='avg', use_conv=False):
+    flatten_in_pool = not use_conv  # flatten when we use a Linear layer after pooling
+    if not pool_type:
+        assert num_classes == 0 or use_conv,\
+            'Pooling can only be disabled if classifier is also removed or conv classifier is used'
+        flatten_in_pool = False  # disable flattening if pooling is pass-through (no pooling)
+    global_pool = SelectAdaptivePool2d(pool_type=pool_type, flatten=flatten_in_pool)
+    num_pooled_features = num_features * global_pool.feat_mult()
+    return global_pool, num_pooled_features
+
+
+def create_pool2d(pool_type, kernel_size, stride=None, **kwargs):
+    stride = stride or kernel_size
+    padding = kwargs.pop('padding', '')
+    padding, is_dynamic = get_padding_value(padding, kernel_size, stride=stride, **kwargs)
+    if is_dynamic:
+        if pool_type == 'avg':
+            return AvgPool2dSame(kernel_size, stride=stride, **kwargs)
+        elif pool_type == 'max':
+            return MaxPool2dSame(kernel_size, stride=stride, **kwargs)
+        else:
+            assert False, f'Unsupported pool type {pool_type}'
+    else:
+        if pool_type == 'avg':
+            return nn.AvgPool2d(kernel_size, stride=stride, padding=padding, **kwargs)
+        elif pool_type == 'max':
+            return nn.MaxPool2d(kernel_size, stride=stride, padding=padding, **kwargs)
+        else:
+            assert False, f'Unsupported pool type {pool_type}'
+
+def is_static_pad(kernel_size: int, stride: int = 1, dilation: int = 1, **_):
+    return stride == 1 and (dilation * (kernel_size - 1)) % 2 == 0
+
+from typing import Any, Callable, Optional, Tuple, List
+
+def get_padding_value(padding, kernel_size, **kwargs) -> Tuple[Tuple, bool]:
+    dynamic = False
+    if isinstance(padding, str):
+        # for any string padding, the padding will be calculated for you, one of three ways
+        padding = padding.lower()
+        if padding == 'same':
+            # TF compatible 'SAME' padding, has a performance and GPU memory allocation impact
+            if is_static_pad(kernel_size, **kwargs):
+                # static case, no extra overhead
+                padding = get_padding(kernel_size, **kwargs)
+            else:
+                # dynamic 'SAME' padding, has runtime/GPU memory overhead
+                padding = 0
+                dynamic = True
+        elif padding == 'valid':
+            # 'VALID' padding, same as padding=0
+            padding = 0
+        else:
+            # Default to PyTorch style 'same'-ish symmetric padding
+            padding = get_padding(kernel_size, **kwargs)
+    return padding, dynamic
+
+def is_stem_deep(stem_type):
+    return any([s in stem_type for s in ('deep', 'tiered')])
+
+class GroupNormAct(nn.GroupNorm):
+    # NOTE num_channel and num_groups order flipped for easier layer swaps / binding of fixed args
+    def __init__(self, num_channels, num_groups=32, eps=1e-5, affine=True,
+                 apply_act=True, act_layer=nn.ReLU, inplace=True, drop_block=None):
+        super(GroupNormAct, self).__init__(num_groups, num_channels, eps=eps, affine=affine)
+        if isinstance(act_layer, str):
+            act_layer = get_act_layer(act_layer)
+        if act_layer is not None and apply_act:
+            act_args = dict(inplace=True) if inplace else {}
+            self.act = act_layer(**act_args)
+        else:
+            self.act = nn.Identity()
+
+    def forward(self, x):
+        x = F.group_norm(x, self.num_groups, self.weight, self.bias, self.eps)
+        x = self.act(x)
+        return x
+
+class DownsampleAvg(nn.Module):
+    def __init__(
+            self, in_chs, out_chs, stride=1, dilation=1, first_dilation=None,
+            preact=True, conv_layer=None, norm_layer=None):
+        """ AvgPool Downsampling as in 'D' ResNet variants. This is not in RegNet space but I might experiment."""
+        super(DownsampleAvg, self).__init__()
+        avg_stride = stride if dilation == 1 else 1
+        if stride > 1 or dilation > 1:
+            avg_pool_fn = AvgPool2dSame if avg_stride == 1 and dilation > 1 else nn.AvgPool2d
+            self.pool = avg_pool_fn(2, avg_stride, ceil_mode=True, count_include_pad=False)
+        else:
+            self.pool = nn.Identity()
+        self.conv = conv_layer(in_chs, out_chs, 1, stride=1)
+        self.norm = nn.Identity() if preact else norm_layer(out_chs, apply_act=False)
+
+    def forward(self, x):
+        return self.norm(self.conv(self.pool(x)))
+
+class StdConv2d(nn.Conv2d):
+    """Conv2d with Weight Standardization. Used for BiT ResNet-V2 models.
+    Paper: `Micro-Batch Training with Batch-Channel Normalization and Weight Standardization` -
+        https://arxiv.org/abs/1903.10520v2
+    """
+    def __init__(
+            self, in_channel, out_channels, kernel_size, stride=1, padding=None,
+            dilation=1, groups=1, bias=False, eps=1e-6):
+        if padding is None:
+            padding = get_padding(kernel_size, stride, dilation)
+        super().__init__(
+            in_channel, out_channels, kernel_size, stride=stride,
+            padding=padding, dilation=dilation, groups=groups, bias=bias)
+        self.eps = eps
+
+    def forward(self, x):
+        weight = F.batch_norm(
+            self.weight.reshape(1, self.out_channels, -1), None, None,
+            training=True, momentum=0., eps=self.eps).reshape_as(self.weight)
+        x = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        return x
+
+class PreActBottleneck(nn.Module):
+    """Pre-activation (v2) bottleneck block.
+    Follows the implementation of "Identity Mappings in Deep Residual Networks":
+    https://github.com/KaimingHe/resnet-1k-layers/blob/master/resnet-pre-act.lua
+    Except it puts the stride on 3x3 conv when available.
+    """
+
+    def __init__(
+            self, in_chs, out_chs=None, bottle_ratio=0.25, stride=1, dilation=1, first_dilation=None, groups=1,
+            act_layer=None, conv_layer=None, norm_layer=None, proj_layer=None, drop_path_rate=0.):
+        super().__init__()
+        first_dilation = first_dilation or dilation
+        conv_layer = conv_layer or StdConv2d
+        norm_layer = norm_layer or partial(GroupNormAct, num_groups=32)
+        out_chs = out_chs or in_chs
+        mid_chs = make_div(out_chs * bottle_ratio)
+
+        if proj_layer is not None:
+            self.downsample = proj_layer(
+                in_chs, out_chs, stride=stride, dilation=dilation, first_dilation=first_dilation, preact=True,
+                conv_layer=conv_layer, norm_layer=norm_layer)
+        else:
+            self.downsample = None
+
+        self.norm1 = norm_layer(in_chs)
+        self.conv1 = conv_layer(in_chs, mid_chs, 1)
+        self.norm2 = norm_layer(mid_chs)
+        self.conv2 = conv_layer(mid_chs, mid_chs, 3, stride=stride, dilation=first_dilation, groups=groups)
+        self.norm3 = norm_layer(mid_chs)
+        self.conv3 = conv_layer(mid_chs, out_chs, 1)
+        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0 else nn.Identity()
+
+    def forward(self, x):
+        x_preact = self.norm1(x)
+
+        # shortcut branch
+        shortcut = x
+        if self.downsample is not None:
+            shortcut = self.downsample(x_preact)
+
+        # residual branch
+        x = self.conv1(x_preact)
+        x = self.conv2(self.norm2(x))
+        x = self.conv3(self.norm3(x))
+        x = self.drop_path(x)
+        return x + shortcut
+
+# Calculate asymmetric TensorFlow-like 'SAME' padding for a convolution
+def get_same_padding(x: int, k: int, s: int, d: int):
+    return max((math.ceil(x / s) - 1) * s + (k - 1) * d + 1 - x, 0)
+# Dynamically pad input x with 'SAME' padding for conv with specified args
+def pad_same(x, k: List[int], s: List[int], d: List[int] = (1, 1), value: float = 0):
+    ih, iw = x.size()[-2:]
+    pad_h, pad_w = get_same_padding(ih, k[0], s[0], d[0]), get_same_padding(iw, k[1], s[1], d[1])
+    if pad_h > 0 or pad_w > 0:
+        x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2], value=value)
+    return x
+
+class StdConv2dSame(nn.Conv2d):
+    """Conv2d with Weight Standardization. TF compatible SAME padding. Used for ViT Hybrid model.
+    Paper: `Micro-Batch Training with Batch-Channel Normalization and Weight Standardization` -
+        https://arxiv.org/abs/1903.10520v2
+    """
+    def __init__(
+            self, in_channel, out_channels, kernel_size, stride=1, padding='SAME',
+            dilation=1, groups=1, bias=False, eps=1e-6):
+        padding, is_dynamic = get_padding_value(padding, kernel_size, stride=stride, dilation=dilation)
+        super().__init__(
+            in_channel, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation,
+            groups=groups, bias=bias)
+        self.same_pad = is_dynamic
+        self.eps = eps
+
+    def forward(self, x):
+        if self.same_pad:
+            x = pad_same(x, self.kernel_size, self.stride, self.dilation)
+        weight = F.batch_norm(
+            self.weight.reshape(1, self.out_channels, -1), None, None,
+            training=True, momentum=0., eps=self.eps).reshape_as(self.weight)
+        x = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        return x
+
+
+def create_resnetv2_stem(
+        in_chs, out_chs=64, stem_type='', preact=True,
+        conv_layer=StdConv2d, norm_layer=partial(GroupNormAct, num_groups=32)):
+    stem = OrderedDict()
+    assert stem_type in ('', 'fixed', 'same', 'deep', 'deep_fixed', 'deep_same', 'tiered')
+
+    # NOTE conv padding mode can be changed by overriding the conv_layer def
+    if is_stem_deep(stem_type):
+        # A 3 deep 3x3  conv stack as in ResNet V1D models
+        if 'tiered' in stem_type:
+            stem_chs = (3 * out_chs // 8, out_chs // 2)  # 'T' resnets in resnet.py
+        else:
+            stem_chs = (out_chs // 2, out_chs // 2)  # 'D' ResNets
+        stem['conv1'] = conv_layer(in_chs, stem_chs[0], kernel_size=3, stride=2)
+        stem['norm1'] = norm_layer(stem_chs[0])
+        stem['conv2'] = conv_layer(stem_chs[0], stem_chs[1], kernel_size=3, stride=1)
+        stem['norm2'] = norm_layer(stem_chs[1])
+        stem['conv3'] = conv_layer(stem_chs[1], out_chs, kernel_size=3, stride=1)
+        if not preact:
+            stem['norm3'] = norm_layer(out_chs)
+    else:
+        # The usual 7x7 stem conv
+        stem['conv'] = conv_layer(in_chs, out_chs, kernel_size=7, stride=2)
+        if not preact:
+            stem['norm'] = norm_layer(out_chs)
+
+    if 'fixed' in stem_type:
+        # 'fixed' SAME padding approximation that is used in BiT models
+        stem['pad'] = nn.ConstantPad2d(1, 0.)
+        stem['pool'] = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)
+    elif 'same' in stem_type:
+        # full, input size based 'SAME' padding, used in ViT Hybrid model
+        stem['pool'] = create_pool2d('max', kernel_size=3, stride=2, padding='same')
+    else:
+        # the usual PyTorch symmetric padding
+        stem['pool'] = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+    return nn.Sequential(stem)
+
+def make_div(v, divisor=8):
+    min_value = divisor
+    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+    if new_v < 0.9 * v:
+        new_v += divisor
+    return new_v
+
+def _create_fc(num_features, num_classes, use_conv=False):
+    if num_classes <= 0:
+        fc = nn.Identity()  # pass-through (no classifier)
+    elif use_conv:
+        fc = nn.Conv2d(num_features, num_classes, 1, bias=True)
+    else:
+        # NOTE: using my Linear wrapper that fixes AMP + torchscript casting issue
+        fc = Linear(num_features, num_classes, bias=True)
+    return fc
+class ClassifierHead(nn.Module):
+    """Classifier head w/ configurable global pooling and dropout."""
+
+    def __init__(self, in_chs, num_classes, pool_type='avg', drop_rate=0., use_conv=False):
+        super(ClassifierHead, self).__init__()
+        self.drop_rate = drop_rate
+        self.global_pool, num_pooled_features = _create_pool(in_chs, num_classes, pool_type, use_conv=use_conv)
+        self.fc = _create_fc(num_pooled_features, num_classes, use_conv=use_conv)
+        self.flatten = nn.Flatten(1) if use_conv and pool_type else nn.Identity()
+
+    def forward(self, x):
+        x = self.global_pool(x)
+        if self.drop_rate:
+            x = F.dropout(x, p=float(self.drop_rate), training=self.training)
+        x = self.fc(x)
+        x = self.flatten(x)
+        return x
+
+class Bottleneck(nn.Module):
+    """Non Pre-activation bottleneck block, equiv to V1.5/V1b Bottleneck. Used for ViT.
+    """
+    def __init__(
+            self, in_chs, out_chs=None, bottle_ratio=0.25, stride=1, dilation=1, first_dilation=None, groups=1,
+            act_layer=None, conv_layer=None, norm_layer=None, proj_layer=None, drop_path_rate=0.):
+        super().__init__()
+        first_dilation = first_dilation or dilation
+        act_layer = act_layer or nn.ReLU
+        conv_layer = conv_layer or StdConv2d
+        norm_layer = norm_layer or partial(GroupNormAct, num_groups=32)
+        out_chs = out_chs or in_chs
+        mid_chs = make_div(out_chs * bottle_ratio)
+
+        if proj_layer is not None:
+            self.downsample = proj_layer(
+                in_chs, out_chs, stride=stride, dilation=dilation, preact=False,
+                conv_layer=conv_layer, norm_layer=norm_layer)
+        else:
+            self.downsample = None
+
+        self.conv1 = conv_layer(in_chs, mid_chs, 1)
+        self.norm1 = norm_layer(mid_chs)
+        self.conv2 = conv_layer(mid_chs, mid_chs, 3, stride=stride, dilation=first_dilation, groups=groups)
+        self.norm2 = norm_layer(mid_chs)
+        self.conv3 = conv_layer(mid_chs, out_chs, 1)
+        self.norm3 = norm_layer(out_chs, apply_act=False)
+        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0 else nn.Identity()
+        self.act3 = act_layer(inplace=True)
+
+    def forward(self, x):
+        # shortcut branch
+        shortcut = x
+        if self.downsample is not None:
+            shortcut = self.downsample(x)
+
+        # residual
+        x = self.conv1(x)
+        x = self.norm1(x)
+        x = self.conv2(x)
+        x = self.norm2(x)
+        x = self.conv3(x)
+        x = self.norm3(x)
+        x = self.drop_path(x)
+        x = self.act3(x + shortcut)
+        return x
+
+class DownsampleConv(nn.Module):
+    def __init__(
+            self, in_chs, out_chs, stride=1, dilation=1, first_dilation=None, preact=True,
+            conv_layer=None, norm_layer=None):
+        super(DownsampleConv, self).__init__()
+        self.conv = conv_layer(in_chs, out_chs, 1, stride=stride)
+        self.norm = nn.Identity() if preact else norm_layer(out_chs, apply_act=False)
+
+    def forward(self, x):
+        return self.norm(self.conv(x))
+
+class ResNetStage(nn.Module):
+    """ResNet Stage."""
+    def __init__(self, in_chs, out_chs, stride, dilation, depth, bottle_ratio=0.25, groups=1,
+                 avg_down=False, block_dpr=None, block_fn=PreActBottleneck,
+                 act_layer=None, conv_layer=None, norm_layer=None, **block_kwargs):
+        super(ResNetStage, self).__init__()
+        first_dilation = 1 if dilation in (1, 2) else 2
+        layer_kwargs = dict(act_layer=act_layer, conv_layer=conv_layer, norm_layer=norm_layer)
+        proj_layer = DownsampleAvg if avg_down else DownsampleConv
+        prev_chs = in_chs
+        self.blocks = nn.Sequential()
+        for block_idx in range(depth):
+            drop_path_rate = block_dpr[block_idx] if block_dpr else 0.
+            stride = stride if block_idx == 0 else 1
+            self.blocks.add_module(str(block_idx), block_fn(
+                prev_chs, out_chs, stride=stride, dilation=dilation, bottle_ratio=bottle_ratio, groups=groups,
+                first_dilation=first_dilation, proj_layer=proj_layer, drop_path_rate=drop_path_rate,
+                **layer_kwargs, **block_kwargs))
+            prev_chs = out_chs
+            first_dilation = dilation
+            proj_layer = None
+
+    def forward(self, x):
+        x = self.blocks(x)
+        return x
+
+def named_apply(fn: Callable, module: nn.Module, name='', depth_first=True, include_root=False) -> nn.Module:
+    if not depth_first and include_root:
+        fn(module=module, name=name)
+    for child_name, child_module in module.named_children():
+        child_name = '.'.join((name, child_name)) if name else child_name
+        named_apply(fn=fn, module=child_module, name=child_name, depth_first=depth_first, include_root=True)
+    if depth_first and include_root:
+        fn(module=module, name=name)
+    return module
+
+def _init_weights(module: nn.Module, name: str = '', zero_init_last=True):
+    if isinstance(module, nn.Linear) or ('head.fc' in name and isinstance(module, nn.Conv2d)):
+        nn.init.normal_(module.weight, mean=0.0, std=0.01)
+        nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Conv2d):
+        nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, (nn.BatchNorm2d, nn.LayerNorm, nn.GroupNorm)):
+        nn.init.ones_(module.weight)
+        nn.init.zeros_(module.bias)
+    elif zero_init_last and hasattr(module, 'zero_init_last'):
+        module.zero_init_last()
+
+class ResNetV2(nn.Module):
+    """Implementation of Pre-activation (v2) ResNet mode.
+    """
+
+    def __init__(
+            self, layers, channels=(256, 512, 1024, 2048),
+            num_classes=1000, in_chans=3, global_pool='avg', output_stride=32,
+            width_factor=1, stem_chs=64, stem_type='', avg_down=False, preact=True,
+            act_layer=nn.ReLU, conv_layer=StdConv2d, norm_layer=partial(GroupNormAct, num_groups=32),
+            drop_rate=0., drop_path_rate=0., zero_init_last=False):
+        super().__init__()
+        self.num_classes = num_classes
+        self.drop_rate = drop_rate
+        wf = width_factor
+
+        self.feature_info = []
+        stem_chs = make_div(stem_chs * wf)
+        self.stem = create_resnetv2_stem(
+            in_chans, stem_chs, stem_type, preact, conv_layer=conv_layer, norm_layer=norm_layer)
+        stem_feat = ('stem.conv3' if is_stem_deep(stem_type) else 'stem.conv') if preact else 'stem.norm'
+        self.feature_info.append(dict(num_chs=stem_chs, reduction=2, module=stem_feat))
+
+        prev_chs = stem_chs
+        curr_stride = 4
+        dilation = 1
+        block_dprs = [x.tolist() for x in torch.linspace(0, drop_path_rate, sum(layers)).split(layers)]
+        block_fn = PreActBottleneck if preact else Bottleneck
+        self.stages = nn.Sequential()
+        for stage_idx, (d, c, bdpr) in enumerate(zip(layers, channels, block_dprs)):
+            out_chs = make_div(c * wf)
+            stride = 1 if stage_idx == 0 else 2
+            if curr_stride >= output_stride:
+                dilation *= stride
+                stride = 1
+            stage = ResNetStage(
+                prev_chs, out_chs, stride=stride, dilation=dilation, depth=d, avg_down=avg_down,
+                act_layer=act_layer, conv_layer=conv_layer, norm_layer=norm_layer, block_dpr=bdpr, block_fn=block_fn)
+            prev_chs = out_chs
+            curr_stride *= stride
+            self.feature_info += [dict(num_chs=prev_chs, reduction=curr_stride, module=f'stages.{stage_idx}')]
+            self.stages.add_module(str(stage_idx), stage)
+
+        self.num_features = prev_chs
+        self.norm = norm_layer(self.num_features) if preact else nn.Identity()
+        self.head = ClassifierHead(
+            self.num_features, num_classes, pool_type=global_pool, drop_rate=self.drop_rate, use_conv=True)
+
+        self.init_weights(zero_init_last=zero_init_last)
+
+
+    def init_weights(self, zero_init_last=True):
+        named_apply(partial(_init_weights, zero_init_last=zero_init_last), self)
+
+    @torch.jit.ignore()
+    def load_pretrained(self, checkpoint_path, prefix='resnet/'):
+        _load_weights(self, checkpoint_path, prefix)
+
+    def get_classifier(self):
+        return self.head.fc
+
+    def reset_classifier(self, num_classes, global_pool='avg'):
+        self.num_classes = num_classes
+        self.head = ClassifierHead(
+            self.num_features, num_classes, pool_type=global_pool, drop_rate=self.drop_rate, use_conv=True)
+
+    def forward_features(self, x):
+        x = self.stem(x)
+        x = self.stages(x)
+        x = self.norm(x)
+        return x
+
+    def forward(self, x):
+        x = self.forward_features(x)
+        x = self.head(x)
+        return x
