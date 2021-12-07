@@ -324,3 +324,37 @@ def crf_inference(img, probs, t=10, scale_factor=1, labels=21):
     Q = d.inference(t)
 
     return np.array(Q).reshape((n_labels, h, w))
+
+def euclidean(x, y):
+    return math.pow(x, 2) + math.pow(y, 2)
+
+def get_pairs_indices(radius, size):
+
+    search_distances = []
+
+    for x in range(1, radius):
+        search_distances.append((0, x))
+
+    for y in range(1, radius):
+        # search_distances.append((0, y))
+        for x in range(1-radius, radius):
+            if euclidean(x, y) < math.pow(radius, 2):
+                search_distances.append((y, x))
+
+    indices_whole = np.reshape(np.arange(0, size[-2]*size[-1], dtype=np.int64), (size[-2], size[-1]))
+
+    indices_from = np.reshape(indices_whole[:1-radius, radius-1:1-radius], [-1])
+
+    indices_result = []
+
+    for y, x in search_distances:
+        indices_to = indices_whole[y:y + 1 - radius + size[-2],
+                     radius - 1 + x:(radius - 1) + x + size[-2] - 2*radius + 2]
+
+        indices_to = np.reshape(indices_to, [-1])
+
+        indices_result.append(indices_to)
+
+    indices_result = np.concatenate(indices_result, axis = 0)
+
+    return indices_from, indices_result
