@@ -7,16 +7,46 @@ import matplotlib.pyplot as plt
 import math
 import mat73
 from skimage.transform import resize
-
-
+import random
 from iou import IoU
 from metrices import *
 # from ours.Utils.iou import *   # Georgios
 # from ours.Utils.metrices import *   # Georgios
 
 
+class ResizeMultipleChannels():
+
+    def __init__(self, dim=(448,440), mode='bilinear'):
+        self.dim = dim
+        self.mode = mode
+
+
+    def __call__(self, tensor):
+
+        return torch.nn.Upsample(self.dim, mode=self.mode)(tensor.view(1, *tensor.shape))[0]
+
+
+class RandomHorizontalFlip():
+
+    def __init__(self,p=0.5):
+        self.flip_p = p
+
+    def __call__(self, img):
+        if random.random() > (1-self.flip_p) :
+            img = np.fliplr(img).copy()
+        return img
+
+
+class CHW_HWC():
+
+    def __init__(self):
+        pass
+
+    def __call__(self,tensor):
+        return tensor.permute(1,2,0)
+
+
 def set_seeds(seed):
-    # author: Ioannis
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
@@ -221,8 +251,6 @@ def eval_batch(Res, labels):
 
 
 class PascalVOC2012(Dataset):
-
-    ### Overwriting some functions of Dataset build in class
     def __init__(self, img_names, labels_dict, voc12_img_folder, input_dim, device, transform=None):
 
         self.labels_dict = np.load(labels_dict, allow_pickle=True).item()
@@ -239,9 +267,7 @@ class PascalVOC2012(Dataset):
 
     def __getitem__(self, idx):
         current_path = self.img_paths[idx]
-
         img_orig = Image.open(current_path)
-        # img, window = pad_resize(img_orig, self.input_dim)
 
         n_channels = img_orig.layers
         if n_channels == 1:
@@ -257,6 +283,63 @@ class PascalVOC2012(Dataset):
 
         return current_path, img.to(self.device), label.to(self.device), orginal_shape
 
+
+
+
+class PascalVOC2012Affinity(Dataset):
+
+    def __init__(self, img_names, voc12_img_folder, low_cams_folder, high_cams_folder,
+                 input_dim, device, img_transform=None, label_transform=None, both_transform=None ):
+
+        self.low_cams_folder = low_cams_folder
+        self.high_cams_folder = high_cams_folder
+
+        self.img_transform = img_transform
+        self.label_transform = label_transform
+        self.both_transform = both_transform
+
+        self.input_dim = input_dim
+        self.device = device
+
+
+        with open(img_names) as file:
+            self.img_paths = np.asarray([voc12_img_folder + l.rstrip("\n")+".jpg" for l in file])
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        current_path = self.img_paths[idx]
+
+        img_key = current_path.split("/")[-1][:-4]
+
+        img = Image.open(current_path)
+
+        orginal_shape = np.shape(img)
+
+        img = img.convert(mode='RGB')
+
+
+        low_cam_path = self.low_cams_folder + img_key + ".npy"
+        high_cam_path = self.high_cams_folder + img_key + ".npy"
+
+        low_cam = np.load(low_cam_path, allow_pickle=True).item()
+        high_cam = np.load(high_cam_path, allow_pickle=True).item()
+
+        labels = np.asarray(list(low_cam.values()) + list(high_cam.values())).transpose(1, 2, 0)
+
+
+        img = self.img_transform(img)
+        labels = self.label_transform(labels)
+
+        ## flipping both imgs and labels
+        img_labels = torch.cat((img, labels), dim=0)
+        img_labels = self.both_transform(img_labels)
+
+        img = img_labels[:3]
+        labels = img_labels[3:]
+
+        return current_path, img.to(self.device), labels.to(self.device), orginal_shape
 
 
 
@@ -324,6 +407,43 @@ def crf_inference(img, probs, t=10, scale_factor=1, labels=21):
     Q = d.inference(t)
 
     return np.array(Q).reshape((n_labels, h, w))
+
+class RandomCrop():
+    ## stolen from https://github.com/jiwoon-ahn/psa
+    ## Thanks Jiwoon Ahn
+
+    def __init__(self, cropsize):
+        self.cropsize = cropsize
+
+    def __call__(self, imgarr):
+
+        h, w, c = imgarr.shape
+
+        ch = min(self.cropsize, h)
+        cw = min(self.cropsize, w)
+
+        w_space = w - self.cropsize
+        h_space = h - self.cropsize
+
+        if w_space > 0:
+            cont_left = 0
+            img_left = random.randrange(w_space+1)
+        else:
+            cont_left = random.randrange(-w_space+1)
+            img_left = 0
+
+        if h_space > 0:
+            cont_top = 0
+            img_top = random.randrange(h_space+1)
+        else:
+            cont_top = random.randrange(-h_space+1)
+            img_top = 0
+
+        container = np.zeros((self.cropsize, self.cropsize, imgarr.shape[-1]), np.float32)
+        container[cont_top:cont_top+ch, cont_left:cont_left+cw] = \
+            imgarr[img_top:img_top+ch, img_left:img_left+cw]
+
+        return container
 
 def euclidean(x, y):
     return math.pow(x, 2) + math.pow(y, 2)
