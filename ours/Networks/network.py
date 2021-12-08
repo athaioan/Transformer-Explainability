@@ -136,7 +136,7 @@ class ViT_model(nn.Module):
         return att_rollout
 
 
-    def extract_LRP(self, input, class_indices = None, sqrt=False):
+    def extract_LRP(self, input, class_indices = None, root=1):
 
         pred = self(input)
 
@@ -169,8 +169,7 @@ class ViT_model(nn.Module):
 
         explainability_cue = explainability_cue.data.cpu().numpy()
 
-        if sqrt == True:
-            explainability_cue = np.sqrt(explainability_cue)
+        explainability_cue = explainability_cue**(1/root)
 
         explainability_cue = min_max_normalize(explainability_cue)
 
@@ -429,7 +428,7 @@ class ViT_model(nn.Module):
                 for flip_flag in [0,1]:
 
                     if flip_flag:
-                        current_explainability_cue_flipped, preds = self.extract_LRP(torch.flip(img, (0,3)) , class_indices=current_vis_class, sqrt=False)
+                        current_explainability_cue_flipped, preds = self.extract_LRP(torch.flip(img, (0,3)) , class_indices=current_vis_class, root=3)
 
                         current_explainability_cue_flipped = torch.nn.Upsample((img_orig_size[0], img_orig_size[1]),
                                                                        mode='bilinear') \
@@ -441,7 +440,7 @@ class ViT_model(nn.Module):
                         current_explainability_cue /=2
                     else:
                         current_explainability_cue, preds = self.extract_LRP(img,
-                                                                             class_indices=current_vis_class, sqrt=False)
+                                                                             class_indices=current_vis_class, root=3)
 
                         current_explainability_cue = torch.nn.Upsample((img_orig_size[0], img_orig_size[1]),
                                                                         mode='bilinear') \
@@ -798,6 +797,75 @@ class ViT_hybrid_model(ViT_model):
 
         return x
 
+
+
+class ViT_hybrid_model_Affinity(nn.Module):
+
+    def __init__(self, max_epochs=10, device="cuda"):
+
+        super(ViT_hybrid_model_Affinity, self).__init__()
+
+        self.device = device
+        self.max_epochs = max_epochs
+
+        self.resnet_backbone = ResNetV2(
+            layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
+            preact=False, stem_type='same', conv_layer=StdConv2dSame)
+
+        self.feat_conv = torch.nn.Conv2d(1024, 1024, 1, bias=False)
+
+        self.predefined_grid = 56
+
+        torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
+
+        self.to(self.device)
+
+
+    def forward(self, x):
+
+        feat = self.resnet_backbone(x)
+
+        x = self.feat_conv(feat)
+        x = F.elu(x)
+
+        x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(x)
+
+        if mode == "train":
+            print("")
+        else:
+            print("")
+
+        ## blah blah blah
+
+        ## affinity_output = predicted Affinity
+
+        if mode == "train":
+            return affinity_output
+        else:
+
+            ## blah blah
+            return
+
+    def train(self, dataloader):
+        print("")
+    def val(self, dataloader):
+        print("")
+
+
+    def load_pretrained(self, weights_path):
+
+        ## loading weights
+        weights_dict = torch.load(weights_path)
+
+        model_dict = self.state_dict()
+        pretrained_dict = {k: v for k, v in weights_dict.items() if
+                           k in model_dict and weights_dict[k].shape == model_dict[k].shape}
+
+        no_pretrained_dict = {k: v for k, v in model_dict.items() if
+                           not (k in weights_dict) or weights_dict[k].shape != model_dict[k].shape}
+
+        model_dict.update(pretrained_dict)
+        self.load_state_dict(model_dict)
 
 
 #########################################################################
