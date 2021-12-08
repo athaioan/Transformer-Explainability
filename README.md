@@ -1,5 +1,8 @@
 # Learning Pixel-level Semantic Affinity with Image-level Supervision
 
+
+Hybrid Pascal Voc Weights: https://drive.google.com/drive/folders/1bPtIrgnwQaOhCjBuQjL4S1lMBQDBmEjE?usp=sharing
+
 **This code is deprecated. Please see https://github.com/jiwoon-ahn/irn instead.**
 
 ![outline](fig_outline.png)
