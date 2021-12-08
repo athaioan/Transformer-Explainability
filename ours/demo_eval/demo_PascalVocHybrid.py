@@ -12,9 +12,10 @@ import pickle
 # from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
-args = SimpleNamespace(batch_size=3,
+args = SimpleNamespace(batch_size=1,
                        input_dim=448,
-                       pretrained_weights="Resnet_ViT.pth",
+                       # pretrained_weights="Resnet_ViT.pth",
+                       pretrained_weights="PascalVOC_classification_Hybrid_1/stage_1.pth",
                        epochs=20,
                        lr=5e-3,
                        weight_decay=1e-4,
@@ -53,7 +54,7 @@ model = ViT_hybrid_model(img_size=(448, 448), patch_size=16, n_heads=12, n_block
 
 
 model.load_pretrained(args.pretrained_weights)
-model.session_name = "PascalVOC_classification_Hybrid_1"
+model.session_name = "PascalVOC_classification_Hybrid_2"
 model.eval()
 
 if not os.path.exists(model.session_name):
@@ -67,23 +68,35 @@ optimizer = torch.optim.SGD(model.parameters(),
                             weight_decay=args.weight_decay)
 
 
-for index in range(model.max_epochs):
+# for index in range(model.max_epochs):
+#
+#     for g in optimizer.param_groups:
+#         g['lr'] = args.lr * (1-index/model.max_epochs)
+#
+#     print("Training epoch...")
+#     model.train_epoch(train_loader, optimizer)
+#
+#     print("Validating epoch...")
+#     model.val_epoch(val_loader)
+#
+#     model.visualize_graph()
+#
+#     if model.val_history["loss"][-1] < model.min_val:
+#         print("Saving model...")
+#         model.min_val = model.val_history["loss"][-1]
+#
+#         torch.save(model.state_dict(), model.session_name+"/stage_1.pth")
 
-    for g in optimizer.param_groups:
-        g['lr'] = args.lr * (1-index/model.max_epochs)
+# #
 
-    print("Training epoch...")
-    model.train_epoch(train_loader, optimizer)
+model.extract_LRP_for_affinity(train_loader, alpha_low=4, alpha_high=16,
+                                 alpha_low_folder = "train_crf_lows3/", alpha_high_folder = "train_crf_highs3/",
+                                 cam_folder = "train_cams3/", pred_folder = "train_preds3/")
 
-    print("Validating epoch...")
-    model.val_epoch(val_loader)
+# model.extract_LRP_for_affinity(val_loader)
+# cam_pred_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/preds3/"
+# gt_mask_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/VOCdevkit/VOC2012/SegmentationClass/"
 
-    model.visualize_graph()
+# metrics = model.extract_mIoU(cam_pred_fold, gt_mask_fold)
 
-    if model.val_history["loss"][-1] < model.min_val:
-        print("Saving model...")
-        model.min_val = model.val_history["loss"][-1]
-
-        torch.save(model.state_dict(), model.session_name+"/stage_1.pth")
-
-
+print("")

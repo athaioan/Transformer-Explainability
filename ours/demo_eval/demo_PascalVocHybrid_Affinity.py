@@ -5,11 +5,12 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
 from utils import *
-from network import ViT_model
+from network import ViT_hybrid_model_Affinity
 import pickle
 
 # from ours.Utils.utils import * # Georgios
 # from ours.Networks.network import ViT_model # Georgios
+
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
@@ -21,10 +22,10 @@ args = SimpleNamespace(batch_size=1,
                        weight_decay=1e-4,
                        VocClassList="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/PascalVocClasses.txt",
                        voc12_img_folder="VOCdevkit/VOC2012/JPEGImages/",
-                       train_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt", ## TODO
+                       train_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt", ## TODO train set
                        # val_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt",
-                       low_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/psa-master/out_la_crf/",
-                       high_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/psa-master/out_ha_crf/",
+                       low_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/val_cams/crf_lows/",
+                       high_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/val_cams/crf_highs/",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
                        )
 
@@ -46,40 +47,26 @@ train_loader = PascalVOC2012Affinity(args.train_set,  args.voc12_img_folder, arg
                              ]),
                              both_transform=transforms.RandomHorizontalFlip(p=0.5))
 
+train_loader = DataLoader(train_loader, batch_size=args.batch_size, shuffle=False)
 
 
-
-
-## Initialize model
-model = ViT_model(img_size=(448, 448), patch_size=32, n_heads=16, n_blocks=24,  embed_size=1024, n_classes=20, max_epochs=args.epochs, device=args.device) ## TODO inster the number of class imagenet:1000 , PascalVOC: 18
+model = ViT_hybrid_model_Affinity(max_epochs=args.epochs, device=args.device)
 
 
 model.load_pretrained(args.pretrained_weights)
-model.session_name = "PascalVOC_classification_6"
+model.session_name = "PascalVOC_classification_Hybrid_Affinity_1"
 model.eval()
-
-## TODO not validation set but training (extract XAI cues for both train and val set
-## shuffle to True
-train_loader = DataLoader(train_loader, batch_size=args.batch_size, shuffle=False)
 
 
 for data in train_loader:
 
-
     img = data[1]
-    label = data[2]
+
+    model(img)
+
     print("")
 
 
-    # vis_index= torch.argmax(label)
-    #
-    #
-    # explainability_cue, pred = model.extract_LRP(img)
-    #
-    #
-    # plt.close("all")
-    # plt.figure()
-    # plt.imshow(explainability_cue.data.cpu().numpy())
-    # plt.figure()
-    # plt.imshow(img[0].data.cpu().numpy().transpose(1,2,0))
-    # print("")
+
+
+
