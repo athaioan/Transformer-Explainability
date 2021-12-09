@@ -24,7 +24,7 @@ args = SimpleNamespace(batch_size=1,
                        voc12_img_folder="C:/Users/georg/Documents/KTH_ML_Master/Deep Learning Advanced Course/Project/Datasets/VOCdevkit/VOC2012/JPEGImages",
                        train_set=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\txts\val.txt", ## TODO train set
                        # val_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt",
-                       low_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
+                       low_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_lows",
                        high_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
                        tol=1e-5
@@ -55,26 +55,27 @@ model = ViT_hybrid_model_Affinity(max_epochs=args.epochs, device=args.device)
 
 
 model.load_pretrained(args.pretrained_weights)
-model.session_name = "PascalVOC_classification_Hybrid_Affinity_1"
+model.session_name = "PascalVOC_classification_Hybrid_Affinity_blind1"
 model.eval()
 
-for iterator in train_loader:
+for _ in range(args.epochs):
+    for iterator in train_loader:
 
-    _, im_orig, gt_mask, im_dims = iterator # unpack
+        _, im_orig, gt_mask, im_dims = iterator # unpack
 
-    affinities = model(im_orig)
+        affinities = model(im_orig) # network.ViT_hybrid_model_Affinity.forward
 
-    labels = [gt_mask[i].to(args.device, non_blocking=True) for i in range(3)]
-    counts = [torch.sum(labels[i]) + args.tol for i in range(3)]
-    losses = [affinity_ce_losses(labels[i], affinities, counts[i], i) for i in range(3)]
+        labels = [gt_mask[i].to(args.device, non_blocking=True) for i in range(3)]
+        counts = [torch.sum(labels[i]) + args.tol for i in range(3)]
+        losses = [affinity_ce_losses(labels[i], affinities, counts[i], i) for i in range(3)]
 
-    model_loss = 0.5 * (losses[0]/2 + losses[1]/2 + losses[2])
+        model_loss = 0.5 * (losses[0]/2 + losses[1]/2 + losses[2])
 
-    model.optimizer.zero_grad()
-    model_loss.backward()
-    model.optimizer.step()
+        model.optimizer.zero_grad()
+        model_loss.backward()
+        model.optimizer.step()
 
-torch.save(model.module.state_dict(), model.session_name + '_mytry.pth')
+torch.save(model.module.state_dict(), model.session_name + '.pth')
 
 
 

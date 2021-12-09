@@ -341,14 +341,10 @@ class PascalVOC2012Affinity(Dataset):
 
         return current_path, img.to(self.device), labels.to(self.device), orginal_shape
 
-
-def affinity_ce_losses(label_pred, affinities, count, index, tol=1e-5):
-    if index == 2:
-        affinities = 1 - affinities
-
 def _fast_hist(label_true, label_pred, n_class):
 
-    # source https://github.com/Juliachang/SC-CAM
+    # source: https://github.com/Juliachang/SC-CAM
+    # Thanks Julia!
     mask = (label_true >= 0) & (label_true < n_class)
     hist = np.bincount(
         n_class * label_true[mask].astype(int) + label_pred[mask],
@@ -360,6 +356,7 @@ def _fast_hist(label_true, label_pred, n_class):
 
 def scores(label_trues, label_preds, n_class):
     # https://github.com/Juliachang/SC-CAM
+    # Thanks Julia!
 
     hist = np.zeros((n_class, n_class))
 
@@ -388,7 +385,6 @@ def scores(label_trues, label_preds, n_class):
 def crf_inference(img, probs, t=10, scale_factor=1, labels=21):
     ## stolen from https://github.com/jiwoon-ahn/psa
     ## Thanks Jiwoon Ahn
-
 
     import pydensecrf.densecrf as dcrf
     from pydensecrf.utils import unary_from_softmax
@@ -446,11 +442,20 @@ class RandomCrop():
 
         return container
 
+def affinity_ce_losses(label_pred, affinities, count, index, tol=1e-5):
+    if index == 2:
+        affinities = 1 - affinities
+
+    loss = - label_pred * torch.log(affinities + tol)
+    loss = torch.sum(loss)
+    loss /= count
+
+    return loss
+
 def euclidean(x, y):
     return math.pow(x, 2) + math.pow(y, 2)
 
 def get_pairs_indices(radius, size):
-
     search_distances = []
 
     for x in range(1, radius):

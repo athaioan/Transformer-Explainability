@@ -805,16 +805,19 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         self.device = device
         self.max_epochs = max_epochs
+        self.predefined_grid = 56
 
         self.resnet_backbone = ResNetV2(
             layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
             preact=False, stem_type='same', conv_layer=StdConv2dSame)
 
+        # 2d convolution and weights
+        # Xavier initialization W ~ U(-sqrt(1/fan_in), -sqrt(1/fan_out))
         self.feat_conv = torch.nn.Conv2d(1024, 1024, 1, bias=False)
-
-        self.predefined_grid = 56
-
         torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
+
+        # Optimizer  TODO: FIX
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
 
         self.to(self.device)
 
@@ -828,26 +831,33 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(x)
 
-        if mode == "train":
-            print("")
-        else:
-            print("")
-
-        ## blah blah blah
-
-        ## affinity_output = predicted Affinity
-
         affinity_output = None
 
-        if mode == "train":
-            return affinity_output
-        else:
+        ## affinity_output is the predicted Affinity
+        indices_from, indices_to = get_pairs_indices(5, (x.size(2), x.size(3)))
+        indices_from = torch.from_numpy(indices_from)
+        indices_to = torch.from_numpy(indices_to)
 
-            ## blah blah
-            return
+        x = x.view(x.size(0), x.size(1), -1)   # todo ???
+
+        region_from = torch.index_select(x, dim=2, index=indices_from.to(self.device, non_blocking=True))
+        region_from = torch.unsqueeze(region_from, dim=2)
+
+        region_to = torch.index_select(x, dim=2, index=indices_to.to(self.device, non_blocking=True))
+        region_to = region_to.view(region_to.size(0), region_to.size(1), -1, region_from.size(3))
+
+        affinity_output = torch.abs(region_to - region_from)
+        affinity_output = -torch.mean(affinity_output, dim=1)
+        affinity_output = torch.exp(affinity_output)
+
+        if(mode == 'train'):
+            return affinity_output
+
+        return None
 
     def train(self, dataloader):
         print("")
+
     def val(self, dataloader):
         print("")
 
