@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 import torch.sparse as sparse
 import torch.nn.functional as F
-from tool import pyutils
+# from tool import pyutils
+# import network.vgg16d
 
-import network.vgg16d
+from ours.psa.tool import pyutils
+from ours.psa.network.vgg16d import Net
 
-class Net(network.vgg16d.Net):
+class Net(Net):
     def __init__(self):
         super(Net, self).__init__(fc6_dilation=4)
 

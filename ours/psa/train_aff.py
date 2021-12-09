@@ -17,7 +17,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=1, type=int)
     parser.add_argument("--max_epoches", default=8, type=int)
-    parser.add_argument("--network", default="network.vgg16_aff", type=str)
+    # parser.add_argument("--network", default="network.vgg16_aff", type=str)
+    parser.add_argument("--network", default="ours.psa.network.vgg16_aff", type=str)
     parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--num_workers", default=0, type=int)
     parser.add_argument("--wt_dec", default=5e-4, type=float)
@@ -25,10 +26,10 @@ if __name__ == '__main__':
     parser.add_argument("--val_list", default="voc12/val.txt", type=str)
     parser.add_argument("--session_name", default="vgg_aff", type=str)
     parser.add_argument("--crop_size", default=448, type=int)
-    parser.add_argument("--weights", default=r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\voc12\vgg_gn_aff.pth" ,required=False, type=str)
-    parser.add_argument("--voc12_root", default = r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012", required=False, type=str)
-    parser.add_argument("--la_crf_dir", default=r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\out_la_crf", type=str)
-    parser.add_argument("--ha_crf_dir", default=r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\out_ha_crf", type=str)
+    parser.add_argument("--weights", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/psa/voc12/vgg_gn_aff.pth" ,required=False, type=str)
+    parser.add_argument("--voc12_root", default = r"C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\VOCdevkit\VOC2012", required=False, type=str)
+    parser.add_argument("--la_crf_dir", default=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\HybridTraining\crf_lows", type=str)
+    parser.add_argument("--ha_crf_dir", default=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\HybridTraining\crf_highs", type=str)
     args = parser.parse_args()
 
     pyutils.Logger(args.session_name + '.log')
@@ -82,9 +83,10 @@ if __name__ == '__main__':
         assert args.network == "network.vgg16_aff"
         weights_dict = network.vgg16d.convert_caffe_to_torch(args.weights)
     else:
-        weights_dict = torch.load(args.weights)
+        # weights_dict = torch.load(args.weights)
+        print("bypass")
 
-    model.load_state_dict(weights_dict, strict=False)
+    # model.load_state_dict(weights_dict, strict=False)
     model = torch.nn.DataParallel(model).cuda()
     model.train()
 
