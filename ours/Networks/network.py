@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-from overwritten_layers import *
-from utils import *
+# from overwritten_layers import *
+# from utils import *
 from einops import rearrange
 import imageio
 import os
@@ -11,8 +11,8 @@ from functools import partial
 import collections
 from itertools import repeat
 
-# from ours.Utils.utils import *   # Georgios
-# from ours.Networks.overwritten_layers import *   # Georgios
+from ours.Utils.utils import *   # Georgios
+from ours.Networks.overwritten_layers import *   # Georgios
 
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
@@ -797,8 +797,6 @@ class ViT_hybrid_model(ViT_model):
 
         return x
 
-
-
 class ViT_hybrid_model_Affinity(nn.Module):
 
     def __init__(self, max_epochs=10, device="cuda"):
@@ -821,7 +819,7 @@ class ViT_hybrid_model_Affinity(nn.Module):
         self.to(self.device)
 
 
-    def forward(self, x):
+    def forward(self, x, mode='train'):
 
         feat = self.resnet_backbone(x)
 
@@ -838,6 +836,8 @@ class ViT_hybrid_model_Affinity(nn.Module):
         ## blah blah blah
 
         ## affinity_output = predicted Affinity
+
+        affinity_output = None
 
         if mode == "train":
             return affinity_output
