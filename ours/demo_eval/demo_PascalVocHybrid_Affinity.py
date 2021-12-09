@@ -27,6 +27,7 @@ args = SimpleNamespace(batch_size=1,
                        low_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
                        high_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
+                       tol=1e-5
                        )
 
 
@@ -57,15 +58,23 @@ model.load_pretrained(args.pretrained_weights)
 model.session_name = "PascalVOC_classification_Hybrid_Affinity_1"
 model.eval()
 
-
 for iterator in train_loader:
 
     _, im_orig, gt_mask, im_dims = iterator # unpack
-    
 
-    model(img)
+    affinities = model(im_orig)
 
-    print("")
+    labels = [gt_mask[i].to(args.device, non_blocking=True) for i in range(3)]
+    counts = [torch.sum(labels[i]) + args.tol for i in range(3)]
+    losses = [affinity_ce_losses(labels[i], affinities, counts[i], i) for i in range(3)]
+
+    model_loss = 0.5 * (losses[0]/2 + losses[1]/2 + losses[2])
+
+    model.optimizer.zero_grad()
+    model_loss.backward()
+    model.optimizer.step()
+
+torch.save(model.module.state_dict(), model.session_name + '_mytry.pth')
 
 
 
