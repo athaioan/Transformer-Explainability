@@ -8,10 +8,10 @@ import math
 import mat73
 from skimage.transform import resize
 import random
-from iou import IoU
-from metrices import *
-# from ours.Utils.iou import *   # Georgios
-# from ours.Utils.metrices import *   # Georgios
+# from iou import IoU
+# from metrices import *
+from ours.Utils.iou import *   # Georgios
+from ours.Utils.metrices import *   # Georgios
 
 
 class ResizeMultipleChannels():
@@ -342,8 +342,9 @@ class PascalVOC2012Affinity(Dataset):
         return current_path, img.to(self.device), labels.to(self.device), orginal_shape
 
 
-
-################### TODO implement ourselves
+def affinity_ce_losses(label_pred, affinities, count, index, tol=1e-5):
+    if index == 2:
+        affinities = 1 - affinities
 
 def _fast_hist(label_true, label_pred, n_class):
 

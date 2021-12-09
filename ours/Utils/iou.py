@@ -1,11 +1,11 @@
 import torch
 import numpy as np
-import metric
-from confusionmatrix import ConfusionMatrix
-# from ours.Utils.confusionmatrix import * # Georgios
-# from ours.Utils.metric import * # Georgios
+# import metric
+# from confusionmatrix import ConfusionMatrix
+from ours.Utils.confusionmatrix import * # Georgios
+from ours.Utils.metric import * # Georgios
 
-class IoU(metric.Metric):
+class IoU(Metric):
     """Computes the intersection over union (IoU) per class and corresponding
     mean (mIoU).
 

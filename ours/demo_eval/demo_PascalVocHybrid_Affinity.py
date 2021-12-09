@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
-from utils import *
-from network import ViT_hybrid_model_Affinity
+# from utils import *
+# from network import ViT_hybrid_model_Affinity
 import pickle
 
-# from ours.Utils.utils import * # Georgios
-# from ours.Networks.network import ViT_model # Georgios
+from ours.Utils.utils import * # Georgios
+from ours.Networks.network import * # Georgios
 
 
 ### Setting arguments
@@ -20,12 +20,12 @@ args = SimpleNamespace(batch_size=1,
                        epochs=15,
                        lr=5e-3,
                        weight_decay=1e-4,
-                       VocClassList="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/PascalVocClasses.txt",
-                       voc12_img_folder="VOCdevkit/VOC2012/JPEGImages/",
-                       train_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt", ## TODO train set
+                       VocClassList=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\txts\pvclasses.txt",
+                       voc12_img_folder="C:/Users/georg/Documents/KTH_ML_Master/Deep Learning Advanced Course/Project/Datasets/VOCdevkit/VOC2012/JPEGImages",
+                       train_set=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\txts\val.txt", ## TODO train set
                        # val_set=r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012\ImageSets\Segmentation\val.txt",
-                       low_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/val_cams/crf_lows/",
-                       high_cams_fold = "C:/Users/johny/Desktop/Transformer-Explainability-main/ours/val_cams/crf_highs/",
+                       low_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
+                       high_cams_fold = r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\PascalVOC_classification_Hybrid_1\val_cams\crf_highs",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
                        )
 
@@ -58,9 +58,10 @@ model.session_name = "PascalVOC_classification_Hybrid_Affinity_1"
 model.eval()
 
 
-for data in train_loader:
+for iterator in train_loader:
 
-    img = data[1]
+    _, im_orig, gt_mask, im_dims = iterator # unpack
+    
 
     model(img)
 
