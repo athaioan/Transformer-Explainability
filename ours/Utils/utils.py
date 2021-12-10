@@ -284,12 +284,10 @@ class PascalVOC2012(Dataset):
         return current_path, img.to(self.device), label.to(self.device), orginal_shape
 
 
-
-
 class PascalVOC2012Affinity(Dataset):
 
     def __init__(self, img_names, voc12_img_folder, low_cams_folder, high_cams_folder,
-                 input_dim, device, img_transform=None, label_transform=None, both_transform=None ):
+                 input_dim, device, img_transform=None, label_transform=None, both_transform=None):
 
         self.low_cams_folder = low_cams_folder
         self.high_cams_folder = high_cams_folder
@@ -299,8 +297,8 @@ class PascalVOC2012Affinity(Dataset):
         self.both_transform = both_transform
 
         self.input_dim = input_dim
-        self.device = device
 
+        self.device = device
 
         with open(img_names) as file:
             self.img_paths = np.asarray([voc12_img_folder + l.rstrip("\n")+".jpg" for l in file])
@@ -310,15 +308,11 @@ class PascalVOC2012Affinity(Dataset):
 
     def __getitem__(self, idx):
         current_path = self.img_paths[idx]
-
         img_key = current_path.split("/")[-1][:-4]
 
         img = Image.open(current_path)
-
         orginal_shape = np.shape(img)
-
         img = img.convert(mode='RGB')
-
 
         low_cam_path = self.low_cams_folder + img_key + ".npy"
         high_cam_path = self.high_cams_folder + img_key + ".npy"
@@ -327,7 +321,6 @@ class PascalVOC2012Affinity(Dataset):
         high_cam = np.load(high_cam_path, allow_pickle=True).item()
 
         labels = np.asarray(list(low_cam.values()) + list(high_cam.values())).transpose(1, 2, 0)
-
 
         img = self.img_transform(img)
         labels = self.label_transform(labels)
@@ -341,10 +334,138 @@ class PascalVOC2012Affinity(Dataset):
 
         return current_path, img.to(self.device), labels.to(self.device), orginal_shape
 
-def _fast_hist(label_true, label_pred, n_class):
 
+class AffinityLabelExtraction():
+
+    def __init__(self, crop_size, radius=5):
+        self.radius = radius
+
+        self.search_dist = []
+
+        for x in range(1, radius):
+            self.search_dist.append((0, x))
+
+        for y in range(1, radius):
+            # self.search_dist.append((0, y))
+            for x in range(1-radius, radius):
+                if euclidean(x, y) < math.pow(radius, 2):
+                    self.search_dist.append((y, x))
+
+        self.height = crop_size - radius + 1
+        self.width = crop_size - 2 * radius + 2
+        return
+
+    def __call__(self, label):
+
+        labels_from = label[:1 - self.radius, self.radius - 1:1 - self.radius]
+        labels_from = np.reshape(labels_from, [-1])
+
+        labels_to_list = []
+        valid_pair_list = []
+        pix_max_val = 255
+
+        for y, x in self.search_dist:
+            labels_to = label[y:y + self.height, self.radius + x - 1:self.radius + x + self.width - 1]
+            labels_to = np.reshape(labels_to, [-1])
+
+            valid_pair = np.logical_and(np.less(labels_to, pix_max_val), np.less(labels_from, pix_max_val))
+
+            labels_to_list.append(labels_to)
+            valid_pair_list.append(valid_pair)
+
+        ## stolen from https://github.com/jiwoon-ahn/psa
+        ## Thanks Jiwoon Ahn
+        bc_labels_from = np.expand_dims(labels_from, 0)
+        concat_labels_to = np.stack(labels_to_list)
+        concat_valid_pair = np.stack(valid_pair_list)
+
+        ## stolen from https://github.com/jiwoon-ahn/psa
+        ## Thanks Jiwoon Ahn
+        pos_affinity_label = np.equal(bc_labels_from, concat_labels_to)
+        bg_pos_affinity_label = np.logical_and(pos_affinity_label, np.equal(bc_labels_from, 0)).astype(np.float32)
+        fg_pos_affinity_label = np.logical_and(np.logical_and(pos_affinity_label, np.not_equal(bc_labels_from, 0)), concat_valid_pair).astype(np.float32)
+        neg_affinity_label = np.logical_and(np.logical_not(pos_affinity_label), concat_valid_pair).astype(np.float32)
+
+        positive_background = torch.from_numpy(bg_pos_affinity_label)
+        positive_foreground = torch.from_numpy(fg_pos_affinity_label)
+        negative_affinity = torch.from_numpy(neg_affinity_label)
+
+        return positive_background, positive_foreground, negative_affinity
+
+
+def affinity_ce_losses(label_pred, affinities, count, index, tol=1e-5):
+    if index == 2:
+        affinities = 1 - affinities
+
+    loss = - label_pred * torch.log(affinities + tol)
+    loss = torch.sum(loss)
+    loss /= count
+
+    return loss
+
+def euclidean(x, y):
+    return math.pow(x, 2) + math.pow(y, 2)
+
+def get_pairs_indices(radius, size):
+    search_distances = []
+
+    for x in range(1, radius):
+        search_distances.append((0, x))
+
+    for y in range(1, radius):
+        # search_distances.append((0, y))
+        for x in range(1-radius, radius):
+            if euclidean(x, y) < math.pow(radius, 2):
+                search_distances.append((y, x))
+
+    indices_whole = np.reshape(np.arange(0, size[-2]*size[-1], dtype=np.int64), (size[-2], size[-1]))
+
+    indices_from = np.reshape(indices_whole[:1-radius, radius-1:1-radius], [-1])
+
+    indices_result = []
+
+    for y, x in search_distances:
+        indices_to = indices_whole[y:y + 1 - radius + size[-2],
+                     radius - 1 + x:(radius - 1) + x + size[-2] - 2*radius + 2]
+
+        indices_to = np.reshape(indices_to, [-1])
+
+        indices_result.append(indices_to)
+
+    indices_result = np.concatenate(indices_result, axis = 0)
+
+    return indices_from, indices_result
+
+def labels_regional_disretization(label):
+    ## stolen from https://github.com/jiwoon-ahn/psa
+    ## Thanks Jiwoon Ahn
+
+    no_score_region = np.max(label, -1) < 1e-5
+    label_la, label_ha = np.array_split(label, 2, axis=-1)
+    label_la = np.argmax(label_la, axis=-1).astype(np.uint8)
+    label_ha = np.argmax(label_ha, axis=-1).astype(np.uint8)
+    label = label_la.copy()
+    label[label_la == 0] = 255
+    label[label_ha == 0] = 0
+    label[no_score_region] = 255  # mostly outer of cropped region
+
+    return label
+
+def plot_loss(loss_train):
+    """ Loss plotting per epoch """
+    num_epochs = len(loss_train)
+    epochs = range(1, num_epochs + 1)
+    plt.plot(epochs, loss_train, 'g-', label='Training loss')
+    plt.title('Training loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
+
+def _fast_hist(label_true, label_pred, n_class):
     # source: https://github.com/Juliachang/SC-CAM
     # Thanks Julia!
+
     mask = (label_true >= 0) & (label_true < n_class)
     hist = np.bincount(
         n_class * label_true[mask].astype(int) + label_pred[mask],
@@ -356,7 +477,7 @@ def _fast_hist(label_true, label_pred, n_class):
 
 def scores(label_trues, label_preds, n_class):
     # https://github.com/Juliachang/SC-CAM
-    # Thanks Julia!
+    # Thanks Julia Chang!
 
     hist = np.zeros((n_class, n_class))
 
@@ -442,45 +563,33 @@ class RandomCrop():
 
         return container
 
-def affinity_ce_losses(label_pred, affinities, count, index, tol=1e-5):
-    if index == 2:
-        affinities = 1 - affinities
-
-    loss = - label_pred * torch.log(affinities + tol)
-    loss = torch.sum(loss)
-    loss /= count
-
-    return loss
-
-def euclidean(x, y):
-    return math.pow(x, 2) + math.pow(y, 2)
-
-def get_pairs_indices(radius, size):
-    search_distances = []
-
-    for x in range(1, radius):
-        search_distances.append((0, x))
-
-    for y in range(1, radius):
-        # search_distances.append((0, y))
-        for x in range(1-radius, radius):
-            if euclidean(x, y) < math.pow(radius, 2):
-                search_distances.append((y, x))
-
-    indices_whole = np.reshape(np.arange(0, size[-2]*size[-1], dtype=np.int64), (size[-2], size[-1]))
-
-    indices_from = np.reshape(indices_whole[:1-radius, radius-1:1-radius], [-1])
-
-    indices_result = []
-
-    for y, x in search_distances:
-        indices_to = indices_whole[y:y + 1 - radius + size[-2],
-                     radius - 1 + x:(radius - 1) + x + size[-2] - 2*radius + 2]
-
-        indices_to = np.reshape(indices_to, [-1])
-
-        indices_result.append(indices_to)
-
-    indices_result = np.concatenate(indices_result, axis = 0)
-
-    return indices_from, indices_result
+# class VOC12ClsDatasetMSF(VOC12ClsDataset):
+#
+#     def __init__(self, img_name_list_path, voc12_root, scales, inter_transform=None, unit=1):
+#         super().__init__(img_name_list_path, voc12_root, transform=None)
+#         self.scales = scales
+#         self.unit = unit
+#         self.inter_transform = inter_transform
+#
+#     def __getitem__(self, idx):
+#         name, img, label = super().__getitem__(idx)
+#
+#         rounded_size = (int(round(img.size[0]/self.unit)*self.unit), int(round(img.size[1]/self.unit)*self.unit))
+#
+#         ms_img_list = []
+#         for s in self.scales:
+#             target_size = (round(rounded_size[0]*s),
+#                            round(rounded_size[1]*s))
+#             s_img = img.resize(target_size, resample=PIL.Image.CUBIC)
+#             ms_img_list.append(s_img)
+#
+#         if self.inter_transform:
+#             for i in range(len(ms_img_list)):
+#                 ms_img_list[i] = self.inter_transform(ms_img_list[i])
+#
+#         msf_img_list = []
+#         for i in range(len(ms_img_list)):
+#             msf_img_list.append(ms_img_list[i])
+#             msf_img_list.append(np.flip(ms_img_list[i], -1).copy())
+#
+#         return name, msf_img_list, label
