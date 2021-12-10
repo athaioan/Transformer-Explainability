@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
-from utils import *
-from network import ViT_hybrid_model
+# from utils import *
+# from network import ViT_hybrid_model
 import pickle
 
-# from ours.Utils.utils import * # Georgios
-# from ours.Networks.network import ViT_model # Georgios
+from ours.Utils.utils import * # Georgios
+from ours.Networks.network import * # Georgios
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
