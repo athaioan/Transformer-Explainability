@@ -710,7 +710,7 @@ class Block(nn.Module):
         self.clone1 = Clone()
         self.clone2 = Clone()
 
-    ###### GM NEW ###### todo --> remove comment after explaining
+
     def relevance_propagation(self, relevance):
         (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance)
         relevance_dupl = self.mlp.relevance_propagation(relevance_dupl)
@@ -799,13 +799,15 @@ class ViT_hybrid_model(ViT_model):
 
 class ViT_hybrid_model_Affinity(nn.Module):
 
-    def __init__(self, max_epochs=10, device="cuda"):
+    def __init__(self, max_epochs=10, lr=0.01, weight_decay=0.1, momentum=0.9, radius=5, crop_size=448, device="cuda"):
 
         super(ViT_hybrid_model_Affinity, self).__init__()
 
         self.device = device
         self.max_epochs = max_epochs
         self.predefined_grid = 56
+        self.radius = radius
+        self.crop_size = crop_size
 
         self.resnet_backbone = ResNetV2(
             layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
@@ -816,8 +818,11 @@ class ViT_hybrid_model_Affinity(nn.Module):
         self.feat_conv = torch.nn.Conv2d(1024, 1024, 1, bias=False)
         torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
 
-        # Optimizer  TODO: FIX
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
+        # Optimizer
+        self.optimizer = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
+
+        # Affinities
+        self.extract_aff_lab = AffinityLabelExtraction(crop_size=self.crop_size // 8, radius=self.radius)
 
         self.to(self.device)
 
@@ -834,7 +839,7 @@ class ViT_hybrid_model_Affinity(nn.Module):
         affinity_output = None
 
         ## affinity_output is the predicted Affinity
-        indices_from, indices_to = get_pairs_indices(5, (x.size(2), x.size(3)))
+        indices_from, indices_to = get_pairs_indices(self.radius, (x.size(2), x.size(3)))
         indices_from = torch.from_numpy(indices_from)
         indices_to = torch.from_numpy(indices_to)
 
@@ -855,8 +860,18 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         return None
 
-    def train(self, dataloader):
-        print("")
+    def affinities(self, labels):
+        # Average pooling
+        labels = torch.nn.functional.interpolate(labels, size=(self.predefined_grid, self.predefined_grid), mode='bilinear')
+        labels = labels.reshape(labels.shape[-2], labels.shape[-1], labels.shape[-3])
+        labels = labels.cpu().numpy()
+
+        # Discretization
+        labels = labels_regional_disretization(labels)
+        labels = self.extract_aff_lab(labels)
+        labels = [labels[i].to(self.device) for i in range(len(labels))]
+
+        return labels
 
     def val(self, dataloader):
         print("")
