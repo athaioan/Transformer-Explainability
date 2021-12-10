@@ -27,9 +27,9 @@ if __name__ == '__main__':
     parser.add_argument("--session_name", default="vgg_aff", type=str)
     parser.add_argument("--crop_size", default=448, type=int)
     parser.add_argument("--weights", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/psa/voc12/vgg_gn_aff.pth" ,required=False, type=str)
-    parser.add_argument("--voc12_root", default = r"C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\VOCdevkit\VOC2012", required=False, type=str)
-    parser.add_argument("--la_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/PascalVOC_classification_Hybrid_1/val_cams/crf_lows", type=str)
-    parser.add_argument("--ha_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/PascalVOC_classification_Hybrid_1/val_cams/crf_highs", type=str)
+    parser.add_argument("--voc12_root", default = "C:/Users/georg/Documents/KTH_ML_Master/Deep Learning Advanced Course/Project/Datasets/VOCdevkit/VOC2012", required=False, type=str)
+    parser.add_argument("--la_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/HybridTraining/crf_lows", type=str)
+    parser.add_argument("--ha_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/HybridTraining/crf_highs", type=str)
     args = parser.parse_args()
 
     pyutils.Logger(args.session_name + '.log')
