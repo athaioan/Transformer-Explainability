@@ -455,7 +455,21 @@ def plot_loss(loss_train):
     """ Loss plotting per epoch """
     num_epochs = len(loss_train)
     epochs = range(1, num_epochs + 1)
-    plt.plot(epochs, loss_train, 'g-', label='Training loss')
+    plt.plot(epochs, loss_train, 'r-', label='Training loss')
+    plt.title('Training loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
+
+def plot_loss_whole(loss_train, loss1, loss2, loss3):
+    """ Loss plotting per epoch """
+    num_epochs = len(loss_train)
+    epochs = range(1, num_epochs + 1)
+    plt.plot(epochs, loss_train, 'r-', label='Full loss')
+    plt.plot(epochs, loss1, 'g-', label='Background positive loss')
+    plt.plot(epochs, loss2, 'b-', label='Foreground positive loss')
+    plt.plot(epochs, loss3, 'm-', label='Negative loss')
     plt.title('Training loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
