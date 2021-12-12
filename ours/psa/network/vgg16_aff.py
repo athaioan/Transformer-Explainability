@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from ours.psa.tool import pyutils
 from ours.psa.network.vgg16d import Net
+from ours.Utils.utils import *
 
 class Net(Net):
     def __init__(self):
@@ -34,6 +35,11 @@ class Net(Net):
 
 
         self.ind_from, self.ind_to = pyutils.get_indices_of_pairs(5, (self.predefined_featuresize, self.predefined_featuresize))
+        ind1, ind2 = get_pairs_indices(5, (self.predefined_featuresize, self.predefined_featuresize))
+
+        assert np.equal(self.ind_from, ind1).all
+        assert np.equal(self.ind_to, ind2).all
+
         self.ind_from = torch.from_numpy(self.ind_from); self.ind_to = torch.from_numpy(self.ind_to)
 
         return

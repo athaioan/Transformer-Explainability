@@ -83,9 +83,10 @@ if __name__ == '__main__':
         assert args.network == "network.vgg16_aff"
         weights_dict = network.vgg16d.convert_caffe_to_torch(args.weights)
     else:
-        weights_dict = torch.load(args.weights)
+        # weights_dict = torch.load(args.weights)
+        print("pass")
 
-    model.load_state_dict(weights_dict, strict=False)
+    # model.load_state_dict(weights_dict, strict=False)
     model = torch.nn.DataParallel(model).cuda()
     model.train()
 
@@ -93,7 +94,7 @@ if __name__ == '__main__':
 
     timer = pyutils.Timer("Session started: ")
 
-    for ep in range(args.max_epoches):
+    for ep in range(1):#range(args.max_epoches):
 
         for iter, pack in enumerate(train_data_loader):
 

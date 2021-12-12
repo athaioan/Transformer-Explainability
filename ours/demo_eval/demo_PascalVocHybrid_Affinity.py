@@ -64,7 +64,7 @@ model = ViT_hybrid_model_Affinity(max_epochs=args.epochs, lr=args.lr, weight_dec
                                   device=args.device)
 
 model.load_pretrained(args.pretrained_weights)
-model.session_name = "PascalVOC_classification_Hybrid_Affinity_blind1_clip"
+model.session_name = "PascalVOC_classification_Hybrid_Affinity_blind2"
 model.train()  # set the model training
 
 training_loss_list = []
