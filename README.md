@@ -1,87 +1,158 @@
-# Learning Pixel-level Semantic Affinity with Image-level Supervision
+# PyTorch Implementation of [Transformer Interpretability Beyond Attention Visualization](https://arxiv.org/abs/2012.09838) [CVPR 2021]
+
+## Important resources
+
+* BaseViT weights as pre-trained on ImageNet-1000 https://drive.google.com/file/d/1sQyk-9RUxu_ymOXruRaLa28z1_WhcQnp/view?usp=sharing
+* LargeViT weights as pre-trained on ImageNet-1000 https://drive.google.com/file/d/1Kr-PhNvIudleb3d9zEnZNtyv1L7HhDkB/view?usp=sharing 
 
 
-Hybrid Pascal Voc Weights: https://drive.google.com/drive/folders/1bPtIrgnwQaOhCjBuQjL4S1lMBQDBmEjE?usp=sharing
+#### Check out our new advancements- [Generic Attention-model Explainability for Interpreting Bi-Modal and Encoder-Decoder Transformers](https://github.com/hila-chefer/Transformer-MM-Explainability)!
+Faster, more general, and can be applied to *any* type of attention!
+Among the features:
+* We remove LRP for a simple and quick solution, and prove that the great results from our first paper still hold!
+* We expand our work to *any* type of Transformer- not just self-attention based encoders, but also co-attention encoders and encoder-decoders!
+* We show that VQA models can actually understand both image and text and make connections!
+* We use a DETR object detector and create segmentation masks from our explanations!
+* We provide a colab notebook with all the examples. You can very easily add images and questions of your own!
 
-**This code is deprecated. Please see https://github.com/jiwoon-ahn/irn instead.**
+<p align="center">
+  <img width="400" height="450" src="new_work.jpg">
+</p>
 
-![outline](fig_outline.png)
+---
+## ViT explainability notebook:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hila-chefer/Transformer-Explainability/blob/main/Transformer_explainability.ipynb)
+
+## BERT explainability notebook:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hila-chefer/Transformer-Explainability/blob/main/BERT_explainability.ipynb)
+---
+
+## Updates
+April 5 2021: Check out this new [post](https://analyticsindiamag.com/compute-relevancy-of-transformer-networks-via-novel-interpretable-transformer/) about our paper! A great resource for understanding the main concepts behind our work.
+
+March 15 2021: [A Colab notebook for BERT for sentiment analysis added!](https://colab.research.google.com/github/hila-chefer/Transformer-Explainability/blob/main/BERT_explainability.ipynb)
+
+Feb 28 2021: Our paper was accepted to CVPR 2021! 
+
+Feb 17 2021: [A Colab notebook with all examples added!](https://github.com/hila-chefer/Transformer-Explainability/blob/main/Transformer_explainability.ipynb)
+
+Jan 5 2021: [A Jupyter notebook for DeiT added!](https://github.com/hila-chefer/Transformer-Explainability/blob/main/DeiT_example.ipynb)
+
+
+<p align="center">
+  <img width="300" height="460" src="https://github.com/hila-chefer/Transformer-Explainability/blob/main/DeiT.PNG">
+</p>
+
+
 ## Introduction
+Official implementation of [Transformer Interpretability Beyond Attention Visualization](https://arxiv.org/abs/2012.09838).
 
-The code and trained models of:
+We introduce a novel method which allows to visualize classifications made by a Transformer based model for both vision and NLP tasks.
+Our method also allows to visualize explanations per class.
 
-Learning Pixel-level Semantic Affinity with Image-level Supervision for Weakly Supervised Semantic Segmentation, Jiwoon Ahn and Suha Kwak, CVPR 2018 [[Paper]](https://arxiv.org/abs/1803.10464)
+<p align="center">
+  <img width="600" height="200" src="https://github.com/hila-chefer/Transformer-Explainability/blob/main/method-page-001.jpg">
+</p>
+Method consists of 3 phases:
 
-We have developed a framework based on AffinityNet to generate accurate segmentation labels of training images given their image-level class labels only. A segmentation network learned with our synthesized labels outperforms previous state-of-the-arts by large margins on the PASCAL VOC 2012.
+1. Calculating relevance for each attention matrix using our novel formulation of LRP.
 
->*Our code was first implemented in Tensorflow at the time of CVPR 2018 submssion, and later we migrated to PyTorch. Some trivial details (optimizer, channel size, and etc.) have been changed.
+2. Backpropagation of gradients for each attention matrix w.r.t. the visualized class. Gradients are used to average attention heads.
 
-## Citation
-If you find the code useful, please consider citing our paper using the following BibTeX entry.
+3. Layer aggregation with rollout.
+
+Please notice our [Jupyter notebook](https://github.com/hila-chefer/Transformer-Explainability/blob/main/example.ipynb) where you can run the two class specific examples from the paper.
+
+
+![alt text](https://github.com/hila-chefer/Transformer-Explainability/blob/main/example.PNG)
+
+To add another input image, simply add the image to the [samples folder](https://github.com/hila-chefer/Transformer-Explainability/tree/main/samples), and use the `generate_visualization` function for your selected class of interest (using the `class_index={class_idx}`), not specifying the index will visualize the top class.
+
+## Credits
+ViT implementation is based on:
+- https://github.com/rwightman/pytorch-image-models
+- https://github.com/lucidrains/vit-pytorch
+- pretrained weights from: https://github.com/google-research/vision_transformer
+
+BERT implementation is taken from the huggingface Transformers library:
+https://huggingface.co/transformers/
+
+ERASER benchmark code adapted from the ERASER GitHub implementation: https://github.com/jayded/eraserbenchmark
+
+Text visualizations in supplementary were created using TAHV heatmap generator for text: https://github.com/jiesutd/Text-Attention-Heatmap-Visualization
+
+## Reproducing results on ViT
+
+### Section A. Segmentation Results
+
+Example:
 ```
-@InProceedings{Ahn_2018_CVPR,
-author = {Ahn, Jiwoon and Kwak, Suha},
-title = {Learning Pixel-Level Semantic Affinity With Image-Level Supervision for Weakly Supervised Semantic Segmentation},
-booktitle = {The IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-month = {June},
-year = {2018}
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=./:$PYTHONPATH python3 baselines/ViT/imagenet_seg_eval.py --method transformer_attribution --imagenet-seg-path /path/to/gtsegs_ijcv.mat
+
+```
+
+In the exmaple above we run a segmentation test with our method. Notice you can choose which method you wish to run using the `--method` argument. 
+You must provide a path to imagenet segmentation data in `--imagenet-seg-path`.
+
+### Section B. Perturbation Results
+
+Example:
+```
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=./:$PYTHONPATH python3 baselines/ViT/generate_visualizations.py --method transformer_attribution --imagenet-validation-path /path/to/imagenet_validation_directory
+```
+
+Notice that you can choose to visualize by target or top class by using the `--vis-cls` argument.
+
+Now to run the perturbation test run the following command:
+```
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=./:$PYTHONPATH python3 baselines/ViT/pertubation_eval_from_hdf5.py --method transformer_attribution
+```
+
+Notice that you can use the `--neg` argument to run either positive or negative perturbation.
+
+## Reproducing results on BERT
+
+1. Download the pretrained weights:
+
+- Download `classifier.zip` from https://drive.google.com/file/d/1kGMTr69UWWe70i-o2_JfjmWDQjT66xwQ/view?usp=sharing
+- mkdir -p `./bert_models/movies`
+- unzip classifier.zip -d ./bert_models/movies/
+
+2. Download the dataset pkl file:
+
+- Download `preprocessed.pkl` from https://drive.google.com/file/d/1-gfbTj6D87KIm_u1QMHGLKSL3e93hxBH/view?usp=sharing
+- mv preprocessed.pkl ./bert_models/movies
+
+3. Download the dataset:
+
+- Download `movies.zip` from https://drive.google.com/file/d/11faFLGkc0hkw3wrGTYJBr1nIvkRb189F/view?usp=sharing
+- unzip movies.zip -d ./data/
+
+4. Now you can run the model.
+
+Example:
+```
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=./:$PYTHONPATH python3 BERT_rationale_benchmark/models/pipeline/bert_pipeline.py --data_dir data/movies/ --output_dir bert_models/movies/ --model_params BERT_params/movies_bert.json
+```
+To control which algorithm to use for explanations change the `method` variable in `BERT_rationale_benchmark/models/pipeline/bert_pipeline.py` (Defaults to 'transformer_attribution' which is our method).
+Running this command will create a directory for the method in `bert_models/movies/<method_name>`.
+
+In order to run f1 test with k, run the following command:
+```
+PYTHONPATH=./:$PYTHONPATH python3 BERT_rationale_benchmark/metrics.py --data_dir data/movies/ --split test --results bert_models/movies/<method_name>/identifier_results_k.json
+```
+
+Also, in the method directory there will be created `.tex` files containing the explanations extracted for each example. This corresponds to our visualizations in the supplementary.
+
+## Citing our paper
+If you make use of our work, please cite our paper:
+```
+@InProceedings{Chefer_2021_CVPR,
+    author    = {Chefer, Hila and Gur, Shir and Wolf, Lior},
+    title     = {Transformer Interpretability Beyond Attention Visualization},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2021},
+    pages     = {782-791}
 }
 ```
-
-## Prerequisite
-* Tested on Ubuntu 16.04, with Python 3.5, PyTorch 0.4, Torchvision 0.2.1, CUDA 9.0, and 1x NVIDIA TITAN X (Pascal).
-* [The PASCAL VOC 2012 development kit](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/):
-You also need to specify the path ('voc12_root') of your downloaded dev kit.
-* (Optional) If you want to try with the VGG-16 based network, PyCaffe and VGG-16 ImageNet pretrained weights [[vgg16_20M.caffemodel]](http://liangchiehchen.com/projects/Init%20Models.html)
-* (Optional) If you want to try with the ResNet-38 based network, Mxnet and ResNet-38 pretrained weights [[ilsvrc-cls_rna-a1_cls1000_ep-0001.params]](https://github.com/itijyou/ademxapp)
-
-## Usage
-#### 1. Train a classification network to get CAMs.
-
-```bash
-python3 train_cls.py --lr 0.1 --batch_size 16 --max_epoches 15 --crop_size 448 --network [network.vgg16_cls | network.resnet38_cls] --voc12_root [your_voc12_root_folder] --weights [your_weights_file] --wt_dec 5e-4
-```
-
-#### 2. Generate labels for AffinityNet by applying dCRF on CAMs.
-
-```bash
-python3 infer_cls.py --infer_list voc12/train_aug.txt --voc12_root [your_voc12_root_folder] --network [network.vgg16_cls | network.resnet38_cls] --weights [your_weights_file] --out_cam [desired_folder] --out_la_crf [desired_folder] --out_ha_crf [desired_folder]
-```
-
-
-#### (Optional) Check the accuracy of CAMs.
-```bash
-python3 infer_cls.py --infer_list voc12/val.txt --voc12_root [your_voc12_root_folder] --network network.resnet38_cls --weights res38_cls.pth --out_cam_pred [desired_folder]
-```
-
-
-#### 3. Train AffinityNet with the labels
-
-```bash
-python3 train_aff.py --lr 0.1 --batch_size 8 --max_epoches 8 --crop_size 448 --voc12_root [your_voc12_root_folder] --network [network.vgg16_aff | network.resnet38_aff] --weights [your_weights_file] --wt_dec 5e-4 --la_crf_dir [your_output_folder] --ha_crf_dir [your_output_folder]
-```
-
-#### 4. Perform Random Walks on CAMs
-
-```bash
-python3 infer_aff.py --infer_list [voc12/val.txt | voc12/train.txt] --voc12_root [your_voc12_root_folder] --network [network.vgg16_aff | network.resnet38_aff] --weights [your_weights_file] --cam_dir [your_output_folder] --out_rw [desired_folder]
-```
-
-## Results and Trained Models
-#### Class Activation Map
-
-| Model         | Train (mIoU)    | Val (mIoU)    | |
-| ------------- |:-------------:|:-----:|:-----:|
-| VGG-16        | 48.9 | 46.6 | [[Weights]](https://drive.google.com/file/d/1Dh5EniRN7FSVaYxSmcwvPq_6AIg-P8EH/view?usp=sharing) |
-| ResNet-38     | 47.7 | 47.2 | [[Weights]](https://drive.google.com/file/d/1xESB7017zlZHqxEWuh1Rb89UhjTGIKOA/view?usp=sharing) |
-| ResNet-38     | 48.0 | 46.8 | CVPR submission |
-
-#### Random Walk with AffinityNet
-
-| Model         | alpha | Train (mIoU)    | Val (mIoU)    | |
-| ------------- |:-----:|:---------------:|:-------------:|:-----:|
-| VGG-16        | 4/16/32 | 59.6 | 54.0 | [[Weights]](https://drive.google.com/file/d/10ue1B20Q51aQ53T93RiaiKETlklzo4jp/view?usp=sharing) |
-| ResNet-38     | 4/16/32 | 61.0 | 60.2 | [[Weights]](https://drive.google.com/open?id=1mFvTH3siw0SS0vqPH0o9N3cI_ISQacwt) |
-| ResNet-38     | 4/16/24 | 58.1 | 57.0 | CVPR submission |
-
->*beta=8, gamma=5, t=256 for all settings
