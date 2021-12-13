@@ -27,9 +27,9 @@ if __name__ == '__main__':
     parser.add_argument("--session_name", default="vgg_aff", type=str)
     parser.add_argument("--crop_size", default=448, type=int)
     parser.add_argument("--weights", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/psa/voc12/vgg_gn_aff.pth" ,required=False, type=str)
-    parser.add_argument("--voc12_root", default = "C:/Users/georg/Documents/KTH_ML_Master/Deep Learning Advanced Course/Project/Datasets/VOCdevkit/VOC2012", required=False, type=str)
-    parser.add_argument("--la_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/HybridTraining/crf_lows", type=str)
-    parser.add_argument("--ha_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/HybridTraining/crf_highs", type=str)
+    parser.add_argument("--voc12_root", default = r"C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\VOCdevkit\VOC2012", required=False, type=str)
+    parser.add_argument("--la_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/PascalVOC_classification_Hybrid_1/val_cams/crf_lows", type=str)
+    parser.add_argument("--ha_crf_dir", default="C:/Users/georg/PycharmProjects/Transformer-Explainability/ours/PascalVOC_classification_Hybrid_1/val_cams/crf_highs", type=str)
     args = parser.parse_args()
 
     pyutils.Logger(args.session_name + '.log')
@@ -83,10 +83,9 @@ if __name__ == '__main__':
         assert args.network == "network.vgg16_aff"
         weights_dict = network.vgg16d.convert_caffe_to_torch(args.weights)
     else:
-        # weights_dict = torch.load(args.weights)
-        print("pass")
+        weights_dict = torch.load(args.weights)
 
-    # model.load_state_dict(weights_dict, strict=False)
+    model.load_state_dict(weights_dict, strict=False)
     model = torch.nn.DataParallel(model).cuda()
     model.train()
 
@@ -94,7 +93,7 @@ if __name__ == '__main__':
 
     timer = pyutils.Timer("Session started: ")
 
-    for ep in range(1):#range(args.max_epoches):
+    for ep in range(args.max_epoches):
 
         for iter, pack in enumerate(train_data_loader):
 
