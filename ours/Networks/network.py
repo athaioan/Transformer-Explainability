@@ -804,9 +804,24 @@ class ViT_hybrid_model_Affinity(nn.Module):
     def __init__(self, max_epochs=10, device="cuda"):
 
         super(ViT_hybrid_model_Affinity, self).__init__()
+        self.train_history ={}
+        self.val_history ={}
+
+        self.train_history["loss"] = []
+        self.train_history["fg_loss"] = []
+        self.train_history["bg_loss"] = []
+        self.train_history["neg_loss"] = []
+
+        self.val_history["loss"] = []
+        self.val_history["fg_loss"] = []
+        self.val_history["bg_loss"] = []
+        self.val_history["neg_loss"] = []
+
+        self.min_val = np.inf
 
         self.device = device
         self.max_epochs = max_epochs
+        self.current_epoch = 0
 
         self.resnet_backbone = ResNetV2(
             layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
@@ -818,10 +833,12 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
 
+        self.indices_from, self.indices_to = self.get_pairs_indices(5, (56,56))
+
         self.to(self.device)
 
 
-    def forward(self, x):
+    def forward(self, x, val_mode=False):
 
         feat = self.resnet_backbone(x)
 
@@ -830,10 +847,27 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(x)
 
-        if mode == "train":
+        if val_mode :
             print("")
         else:
-            print("")
+            ### predefined feature size
+            x = x.view(x.size(0), x.size(1), -1)
+
+            feature_from = torch.index_select(x, dim=2,
+                                              index=torch.from_numpy(self.indices_from).to(self.device))
+
+            feature_to = torch.index_select(x, dim=2,
+                                              index=torch.from_numpy(self.indices_to).to(self.device))
+
+            feature_from = torch.unsqueeze(feature_from, dim=2)
+
+            feature_to = feature_to.view(feature_to.size(0),
+                                         feature_to.size(1), -1, feature_from.size(3))
+
+            aff = torch.exp(-torch.mean(torch.abs(feature_from-feature_to), dim=1))
+            return aff
+
+
 
         ## blah blah blah
 
@@ -846,11 +880,237 @@ class ViT_hybrid_model_Affinity(nn.Module):
             ## blah blah
             return
 
-    def train(self, dataloader):
-        print("")
-    def val(self, dataloader):
-        print("")
+    def euclidean(self, x, y):
+        return math.pow(x, 2) + math.pow(y, 2)
 
+    def get_pairs_indices(self, radius=5, size=(56, 56)):
+
+        self.in_radius = radius-1
+
+        search_distances = []
+
+        for x in range(1, radius):
+            search_distances.append((0, x))
+
+        for y in range(1, radius):
+            # search_distances.append((0, y))
+            for x in range(1 - radius, radius):
+                if self.euclidean(x, y) < math.pow(radius, 2):
+                    search_distances.append((y, x))
+
+        indices_whole = np.reshape(np.arange(0, size[-2] * size[-1], dtype=np.int64), (size[-2], size[-1]))
+
+        indices_from = np.reshape(indices_whole[:1 - radius, radius - 1:1 - radius], [-1])
+
+        indices_result = []
+
+        for y, x in search_distances:
+            indices_to = indices_whole[y:y + 1 - radius + size[-2],
+                         radius - 1 + x:(radius - 1) + x + size[-2] - 2 * radius + 2]
+
+            indices_to = np.reshape(indices_to, [-1])
+
+            indices_result.append(indices_to)
+
+        indices_result = np.concatenate(indices_result, axis=0)
+
+        return indices_from, indices_result
+
+    def train_epoch(self, dataloader, optimizer):
+
+        train_loss = 0
+        train_fg_loss = 0
+        train_bg_loss = 0
+        train_neg_loss = 0
+        self.train()
+        self.current_epoch += 1
+
+
+        for index, data in enumerate(dataloader):
+
+            if index>5:
+                break
+
+            img = data[1]
+            labels = data[2]
+
+            aff_pred = self(img)
+
+
+            BG_labels = labels[0]
+            FG_labels = labels[1]
+            NEG_labels = labels[2]
+
+            n_bg_affinities = torch.sum(BG_labels) + 1e-6
+            n_fg_affinities = torch.sum(FG_labels) + 1e-6
+            n_neg_affinities = torch.sum(NEG_labels) + 1e-6
+
+            ## loss according to Eq. 7,8,9,10
+            ## BG loss
+            fg_loss = torch.sum(-FG_labels * torch.log(aff_pred+1e-6)) / n_fg_affinities
+            bg_loss = torch.sum(-BG_labels * torch.log(aff_pred+1e-6)) / n_bg_affinities
+            neg_loss = torch.sum(-NEG_labels * torch.log(1 - aff_pred + 1e-6)) / n_neg_affinities
+
+
+            # explainability_cue, preds = self.extract_LRP(img)
+            loss = fg_loss/4 + bg_loss/4 + neg_loss/2
+            ##
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            ### adding batch loss into the overall loss
+            train_loss += loss.item()
+            train_fg_loss += fg_loss.item()
+            train_bg_loss += bg_loss.item()
+            train_neg_loss += neg_loss.item()
+
+            ### Printing epoch results
+            print('Train Epoch: {}/{}\n'
+                  'Step: {}/{}\n'
+                  'Batch ~ Overall Loss: {:.4f}\n'
+                  'Batch ~ FG Loss: {:.4f}\n'
+                  'Batch ~ BG Loss: {:.4f}\n'
+                  'Batch ~ NEG Loss: {:.4f}\n'
+                  .format(self.current_epoch, self.max_epochs,
+                          index + 1, len(dataloader),
+                          train_loss / (index + 1),
+                          train_fg_loss / (index + 1),
+                          train_bg_loss / (index + 1),
+                          train_neg_loss / (index + 1)))
+
+        self.train_history["loss"].append(train_loss / len(dataloader))
+        self.train_history["fg_loss"].append(train_fg_loss / len(dataloader))
+        self.train_history["bg_loss"].append(train_bg_loss / len(dataloader))
+        self.train_history["neg_loss"].append(train_neg_loss / len(dataloader))
+        return
+
+    def val_epoch(self, dataloader):
+
+        val_loss = 0
+        val_fg_loss = 0
+        val_bg_loss = 0
+        val_neg_loss = 0
+        self.eval()
+        with torch.no_grad():
+
+            for index, data in enumerate(dataloader):
+
+                if index > 5:
+                    break
+
+                img = data[1]
+                labels = data[2]
+
+                aff_pred = self(img)
+
+
+                BG_labels = labels[0]
+                FG_labels = labels[1]
+                NEG_labels = labels[2]
+
+                n_bg_affinities = torch.sum(BG_labels) + 1e-6
+                n_fg_affinities = torch.sum(FG_labels) + 1e-6
+                n_neg_affinities = torch.sum(NEG_labels) + 1e-6
+
+                ## loss according to Eq. 7,8,9,10
+                ## BG loss
+                fg_loss = torch.sum(-FG_labels * torch.log(aff_pred+1e-6)) / n_fg_affinities
+                bg_loss = torch.sum(-BG_labels * torch.log(aff_pred+1e-6)) / n_bg_affinities
+                neg_loss = torch.sum(-NEG_labels * torch.log(1 - aff_pred + 1e-6)) / n_neg_affinities
+
+
+                # explainability_cue, preds = self.extract_LRP(img)
+                loss = fg_loss/4 + bg_loss/4 + neg_loss/2
+                ##
+
+                ### adding batch loss into the overall loss
+                val_loss += loss.item()
+                val_fg_loss += fg_loss.item()
+                val_bg_loss += bg_loss.item()
+                val_neg_loss += neg_loss.item()
+
+                ### Printing epoch results
+                print('Train Epoch: {}/{}\n'
+                      'Step: {}/{}\n'
+                      'Batch ~ Overall Loss: {:.4f}\n'
+                      'Batch ~ FG Loss: {:.4f}\n'
+                      'Batch ~ BG Loss: {:.4f}\n'
+                      'Batch ~ NEG Loss: {:.4f}\n'
+                      .format(self.current_epoch, self.max_epochs,
+                              index + 1, len(dataloader),
+                              val_loss / (index + 1),
+                              val_fg_loss / (index + 1),
+                              val_bg_loss / (index + 1),
+                              val_neg_loss / (index + 1)))
+
+            self.val_history["loss"].append(val_loss / len(dataloader))
+            self.val_history["fg_loss"].append(val_fg_loss / len(dataloader))
+            self.val_history["bg_loss"].append(val_bg_loss / len(dataloader))
+            self.val_history["neg_loss"].append(val_neg_loss / len(dataloader))
+            return
+
+
+    def visualize_graph(self):
+
+        ## Plotting loss
+        plt.figure()
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Loss Graph")
+
+        plt.plot(np.arange(len(self.train_history["loss"])), self.train_history["loss"], label="train")
+        plt.plot(np.arange(len(self.val_history["loss"])), self.val_history["loss"], label="val")
+
+        plt.legend()
+        plt.savefig(self.session_name + "/loss.png")
+        plt.close()
+
+        ## Plotting FG loss
+        plt.figure()
+        plt.xlabel("Epoch")
+        plt.ylabel("FG-Loss")
+        plt.title("FG - Loss Graph")
+
+        plt.plot(np.arange(len(self.train_history["fg_loss"])), self.train_history["fg_loss"], label="train")
+        plt.plot(np.arange(len(self.val_history["fg_loss"])), self.val_history["fg_loss"], label="val")
+
+        plt.legend()
+        plt.savefig(self.session_name + "/fg.png")
+        plt.close()
+
+
+        ## Plotting BG loss
+        plt.figure()
+        plt.xlabel("Epoch")
+        plt.ylabel("Bg-Loss")
+        plt.title("Bg-Loss Graph")
+
+        plt.plot(np.arange(len(self.train_history["bg_loss"])), self.train_history["bg_loss"], label="train")
+        plt.plot(np.arange(len(self.val_history["bg_loss"])), self.val_history["bg_loss"], label="val")
+
+        plt.legend()
+        plt.savefig(self.session_name + "/bg.png")
+        plt.close()
+
+        ## Plotting NG loss
+        plt.figure()
+        plt.xlabel("Epoch")
+        plt.ylabel("Neg-Loss")
+        plt.title("Neg-Loss Graph")
+
+        plt.plot(np.arange(len(self.train_history["neg_loss"])), self.train_history["neg_loss"], label="train")
+        plt.plot(np.arange(len(self.val_history["neg_loss"])), self.val_history["neg_loss"], label="val")
+
+        plt.legend()
+        plt.savefig(self.session_name + "/neg.png")
+        plt.close()
+
+
+
+
+        return
 
     def load_pretrained(self, weights_path):
 
