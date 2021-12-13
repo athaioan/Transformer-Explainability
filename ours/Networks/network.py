@@ -827,11 +827,16 @@ class ViT_hybrid_model_Affinity(nn.Module):
             layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
             preact=False, stem_type='same', conv_layer=StdConv2dSame)
 
-        self.feat_conv = torch.nn.Conv2d(1024, 1024, 1, bias=False)
+
+        self.feat_conv = torch.nn.Conv2d(1024, 512, 1, bias=False)
+        self.gn = nn.modules.normalization.GroupNorm(32, 512)
+        self.affinity_conv = torch.nn.Conv2d(512, 512, 1, bias=False)
 
         self.predefined_grid = 56
 
-        torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
+
+        torch.nn.init.kaiming_normal_(self.feat_conv.weight)
+        torch.nn.init.xavier_uniform_(self.affinity_conv.weight, gain=4)
 
         self.indices_from, self.indices_to = self.get_pairs_indices(5, (56,56))
 
@@ -842,10 +847,17 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         feat = self.resnet_backbone(x)
 
-        x = self.feat_conv(feat)
+        x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(feat)
+
+        x = self.feat_conv(x)
+        x = self.gn(x)
         x = F.elu(x)
 
-        x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(x)
+        x = self.affinity_conv(x)
+        x = F.elu(x)
+
+
+
 
         if val_mode :
             print("")
@@ -928,8 +940,6 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         for index, data in enumerate(dataloader):
 
-            if index>5:
-                break
 
             img = data[1]
             labels = data[2]
@@ -973,12 +983,20 @@ class ViT_hybrid_model_Affinity(nn.Module):
                   'Batch ~ FG Loss: {:.4f}\n'
                   'Batch ~ BG Loss: {:.4f}\n'
                   'Batch ~ NEG Loss: {:.4f}\n'
+                  'Batch ~ FG Count: {:.4f}\n'
+                  'Batch ~ BG Count: {:.4f}\n'
+                  'Batch ~ NEG Count: {:.4f}\n'
                   .format(self.current_epoch, self.max_epochs,
                           index + 1, len(dataloader),
                           train_loss / (index + 1),
                           train_fg_loss / (index + 1),
                           train_bg_loss / (index + 1),
-                          train_neg_loss / (index + 1)))
+                          train_neg_loss / (index + 1),
+                          n_fg_affinities ,
+                          n_bg_affinities ,
+                          n_neg_affinities
+                          ))
+            pass
 
         self.train_history["loss"].append(train_loss / len(dataloader))
         self.train_history["fg_loss"].append(train_fg_loss / len(dataloader))
@@ -996,9 +1014,6 @@ class ViT_hybrid_model_Affinity(nn.Module):
         with torch.no_grad():
 
             for index, data in enumerate(dataloader):
-
-                if index > 5:
-                    break
 
                 img = data[1]
                 labels = data[2]
