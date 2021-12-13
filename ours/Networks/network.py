@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-# from overwritten_layers import *
-# from utils import *
+from overwritten_layers import *
+from utils import *
 from einops import rearrange
 import imageio
 import os
@@ -11,8 +11,8 @@ from functools import partial
 import collections
 from itertools import repeat
 
-from ours.Utils.utils import *   # Georgios
-from ours.Networks.overwritten_layers import *   # Georgios
+# from ours.Utils.utils import *   # Georgios
+# from ours.Networks.overwritten_layers import *   # Georgios
 
 class ViT_model(nn.Module):
     def __init__(self, n_classes=1000, img_size=(224, 224), patch_size=16, in_ch=3, embed_size=768,
@@ -710,7 +710,7 @@ class Block(nn.Module):
         self.clone1 = Clone()
         self.clone2 = Clone()
 
-
+    ###### GM NEW ###### todo --> remove comment after explaining
     def relevance_propagation(self, relevance):
         (relevance, relevance_dupl) = self.add2.relevance_propagation(relevance)
         relevance_dupl = self.mlp.relevance_propagation(relevance_dupl)
@@ -797,37 +797,31 @@ class ViT_hybrid_model(ViT_model):
 
         return x
 
+
+
 class ViT_hybrid_model_Affinity(nn.Module):
 
-    def __init__(self, max_epochs=10, lr=0.01, weight_decay=0.1, momentum=0.9, radius=5, crop_size=448, device="cuda"):
+    def __init__(self, max_epochs=10, device="cuda"):
 
         super(ViT_hybrid_model_Affinity, self).__init__()
 
         self.device = device
         self.max_epochs = max_epochs
-        self.predefined_grid = 56
-        self.radius = radius
-        self.crop_size = crop_size
 
         self.resnet_backbone = ResNetV2(
             layers=(3, 4, 9), num_classes=0, global_pool='', in_chans=3,
             preact=False, stem_type='same', conv_layer=StdConv2dSame)
 
-        # 2d convolution and weights
-        # Xavier initialization W ~ U(-sqrt(1/fan_in), -sqrt(1/fan_out))
         self.feat_conv = torch.nn.Conv2d(1024, 1024, 1, bias=False)
+
+        self.predefined_grid = 56
+
         torch.nn.init.xavier_uniform_(self.feat_conv.weight, gain=4)
-
-        # Optimizer
-        self.optimizer = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
-
-        # Affinities
-        self.extract_aff_lab = AffinityLabelExtraction(crop_size=self.crop_size // 8, radius=self.radius)
 
         self.to(self.device)
 
 
-    def forward(self, x, mode='train'):
+    def forward(self, x):
 
         feat = self.resnet_backbone(x)
 
@@ -836,43 +830,24 @@ class ViT_hybrid_model_Affinity(nn.Module):
 
         x = torch.nn.Upsample((self.predefined_grid, self.predefined_grid), mode='bilinear')(x)
 
-        affinity_output = None
+        if mode == "train":
+            print("")
+        else:
+            print("")
 
-        ## affinity_output is the predicted Affinity
-        indices_from, indices_to = get_pairs_indices(self.radius, (x.size(2), x.size(3)))
-        indices_from = torch.from_numpy(indices_from)
-        indices_to = torch.from_numpy(indices_to)
+        ## blah blah blah
 
-        x = x.view(x.size(0), x.size(1), -1)   # todo ???
+        ## affinity_output = predicted Affinity
 
-        region_from = torch.index_select(x, dim=2, index=indices_from.to(self.device, non_blocking=True))
-        region_from = torch.unsqueeze(region_from, dim=2)
-
-        region_to = torch.index_select(x, dim=2, index=indices_to.to(self.device, non_blocking=True))
-        region_to = region_to.view(region_to.size(0), region_to.size(1), -1, region_from.size(3))
-
-        affinity_output = torch.abs(region_to - region_from)
-        affinity_output = -torch.mean(affinity_output, dim=1)
-        affinity_output = torch.exp(affinity_output)
-
-        if(mode == 'train'):
+        if mode == "train":
             return affinity_output
+        else:
 
-        return None
+            ## blah blah
+            return
 
-    def affinities(self, labels):
-        # Average pooling
-        labels = torch.nn.functional.interpolate(labels, size=(self.predefined_grid, self.predefined_grid), mode='bilinear')
-        labels = labels.reshape(labels.shape[-2], labels.shape[-1], labels.shape[-3])
-        labels = labels.cpu().numpy()
-
-        # Discretization
-        labels = labels_regional_disretization(labels)
-        labels = self.extract_aff_lab(labels)
-        labels = [labels[i].to(self.device) for i in range(len(labels))]
-
-        return labels
-
+    def train(self, dataloader):
+        print("")
     def val(self, dataloader):
         print("")
 

@@ -52,16 +52,18 @@ def get_indices_in_radius(height, width, radius):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", required=False, default=r'/home/georg_mosh/Documents/PycharmProjects/psa/vgg_gn_aff.pth', type=str)
+    parser.add_argument("--weights", default=r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\voc12\vgg_gn_aff.pth" ,required=False, type=str)
     parser.add_argument("--network", default="network.vgg16_aff", type=str)
-    parser.add_argument("--infer_list", default=r'/home/georg_mosh/Documents/PycharmProjects/psa/voc12/train_aug.txt', type=str)
-    parser.add_argument("--num_workers", default=8, type=int)
-    parser.add_argument("--cam_dir", required=False, type=str)
-    parser.add_argument("--voc12_root", required=False, default = r'/home/georg_mosh/Documents/Datasets/VOCdevkit/VOC2012', type=str)
+    parser.add_argument("--infer_list", default="voc12/val.txt", type=str)
+    parser.add_argument("--num_workers", default=1, type=int)
+    parser.add_argument("--cam_dir", default=r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\out_cam", required=False, type=str)
+    parser.add_argument("--voc12_root",  default = r"C:\Users\johny\Desktop\Transformer-Explainability-main\ours\VOCdevkit\VOC2012", required=False, type=str)
     parser.add_argument("--alpha", default=16, type=int)
-    parser.add_argument("--out_rw", required=False, default = r'/home/georg_mosh/Documents/PycharmProjects/psa/out', type=str)
-    parser.add_argument("--beta", default=8, type=int)
-    parser.add_argument("--logt", default=8, type=int)
+    parser.add_argument("--out_rw", default =r"C:\Users\johny\Desktop\Transformer-Explainability-main\psa-master\out_rw" , required=False, type=str)
+    parser.add_argument("--beta", default=8, type=int) #check
+    parser.add_argument("--logt", default=8, type=int) #check
+
+# *beta=8, gamma=5, t=256 for all settings
 
     args = parser.parse_args()
 
@@ -93,7 +95,7 @@ if __name__ == '__main__':
         dheight = int(np.ceil(img.shape[2]/8))
         dwidth = int(np.ceil(img.shape[3]/8))
 
-        cam = np.load(os.path.join(args.cam_dir, name + '.npy')).item()
+        cam = np.load(args.cam_dir+ "/"+ name + '.npy', allow_pickle=True).item()
 
         cam_full_arr = np.zeros((21, orig_shape[2], orig_shape[3]), np.float32)
         for k, v in cam.items():
@@ -121,4 +123,4 @@ if __name__ == '__main__':
 
             res = np.uint8(cam_rw_pred.cpu().data[0])[:orig_shape[2], :orig_shape[3]]
 
-            scipy.misc.imsave(os.path.join(args.out_rw, name + '.png'), res)
+            imageio.imwrite(args.out_rw +"/"+  name + '.png', res)
