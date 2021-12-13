@@ -2,6 +2,15 @@
 
 **Original repo: https://github.com/jiwoon-ahn/irn instead.**
 
+## Important resources
+
+### Weights:
+Hybrid Pascal Voc Weights: https://drive.google.com/drive/folders/1bPtIrgnwQaOhCjBuQjL4S1lMBQDBmEjE?usp=sharing
+
+### CRFs:
+* Low: https://1drv.ms/u/s!ArK_bULPXnoqhYEOXFAks9NZsiJPCw?e=FKANlR
+* High: https://1drv.ms/u/s!ArK_bULPXnoqhYENdfk_sy3FNgfojA?e=aLdV2e
+
 ## Introduction
 
 The replicated code of:
