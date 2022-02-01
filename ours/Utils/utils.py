@@ -12,11 +12,11 @@ from iou import IoU
 from metrices import *
 # from ours.Utils.iou import *   # Georgios
 # from ours.Utils.metrices import *   # Georgios
-
+from torch import nn
 
 class ResizeMultipleChannels():
 
-    def __init__(self, dim=(448,440), mode='bilinear'):
+    def __init__(self, dim=(448,448), mode='bilinear'):
         self.dim = dim
         self.mode = mode
 
@@ -301,6 +301,8 @@ class PascalVOC2012Affinity(Dataset):
         self.input_dim = input_dim
         self.device = device
 
+        self.avg_pool = nn.AvgPool2d((8, 8), stride=(8, 8))
+        self.in_radius_labels = AffinityLabelExtraction(crop_size = input_dim//8, radius = 5)
 
         with open(img_names) as file:
             self.img_paths = np.asarray([voc12_img_folder + l.rstrip("\n")+".jpg" for l in file])
@@ -334,12 +336,140 @@ class PascalVOC2012Affinity(Dataset):
 
         ## flipping both imgs and labels
         img_labels = torch.cat((img, labels), dim=0)
-        img_labels = self.both_transform(img_labels)
+        if self.both_transform is not None:
+            img_labels = self.both_transform(img_labels)
 
         img = img_labels[:3]
         labels = img_labels[3:]
 
-        return current_path, img.to(self.device), labels.to(self.device), orginal_shape
+        ## down-scaling labels
+        labels = self.avg_pool(labels).permute(1,2,0)
+
+        n_labels = labels.shape[-1]
+        n_targets = n_labels // 2
+        label_low =  labels[:, :, :n_targets]
+        label_high =  labels[:, :, n_targets:]
+
+        ## most confident label in each pixel
+        label_low = torch.argmax(label_low, dim=-1).data.cpu().numpy()
+        label_high = torch.argmax(label_high, dim=-1).data.cpu().numpy()
+        label = label_low.copy()
+
+        ## Note label_low: confident FG, unconfident BG
+        ## Note label_high: confident BG, unconfident FG
+        label[label_low == 0] = 255 ## unconfident BG = irrelevant region
+        label[label_high == 0] = 0 ## confident BG = confident BG
+
+        ### ExtractAffinityLabelInRadius
+        labels = self.in_radius_labels(label)
+
+        return current_path, img.to(self.device), labels, orginal_shape
+#################################### CLASS ####################################
+
+class AffinityLabelExtraction():
+
+    def __init__(self, crop_size, radius=5, device="cuda"):
+        self.radius = radius
+        self.radius_floor = radius - 1 #might be useless
+        self.device = device
+
+        self.search_dist = []
+
+        for x in range(1, radius):
+            self.search_dist.append((0, x))
+
+        for y in range(1, radius):
+            # self.search_dist.append((0, y))
+            for x in range(1-radius, radius):
+                if self.euclidean(x, y) < math.pow(radius, 2):
+                    self.search_dist.append((y, x))
+
+        self.height = crop_size - radius + 1
+        self.width = crop_size - 2 * radius + 2
+        return
+
+    def __call__(self, label):
+
+        labels_from = label[:1 - self.radius, self.radius - 1:1 - self.radius]
+        labels_from = np.reshape(labels_from, [-1])
+
+        labels_to_list = []
+        valid_pair_list = []
+        pix_max_val = 255
+
+        for y, x in self.search_dist:
+            labels_to = label[y:y + self.height, self.radius + x - 1:self.radius + x + self.width - 1]
+            labels_to = np.reshape(labels_to, [-1])
+
+            valid_pair = np.logical_and(np.less(labels_to, pix_max_val), np.less(labels_from, pix_max_val))
+
+            labels_to_list.append(labels_to)
+            valid_pair_list.append(valid_pair)
+
+        ## stolen from https://github.com/jiwoon-ahn/psa
+        ## Thanks Jiwoon Ahn
+        bc_labels_from = np.expand_dims(labels_from, 0)
+        concat_labels_to = np.stack(labels_to_list)
+        concat_valid_pair = np.stack(valid_pair_list)
+
+        ## stolen from https://github.com/jiwoon-ahn/psa
+        ## Thanks Jiwoon Ahn
+        pos_affinity_label = np.equal(bc_labels_from, concat_labels_to)
+        bg_pos_affinity_label = np.logical_and(pos_affinity_label, np.equal(bc_labels_from, 0)).astype(np.float32)
+        fg_pos_affinity_label = np.logical_and(np.logical_and(pos_affinity_label, np.not_equal(bc_labels_from, 0)), concat_valid_pair).astype(np.float32)
+        neg_affinity_label = np.logical_and(np.logical_not(pos_affinity_label), concat_valid_pair).astype(np.float32)
+
+        positive_background = torch.from_numpy(bg_pos_affinity_label).to(self.device)
+        positive_foreground = torch.from_numpy(fg_pos_affinity_label).to(self.device)
+        negative_affinity = torch.from_numpy(neg_affinity_label).to(self.device)
+
+        return positive_background, positive_foreground, negative_affinity
+
+
+#################################### HELPERS ####################################
+
+    def affinity_ce_losses(self,label_pred, affinities, count, index, tol=1e-5):
+        if index == 2:
+            affinities = 1 - affinities
+
+        loss = - label_pred * torch.log(affinities + tol)
+        loss = torch.sum(loss)
+        loss /= count
+
+        return loss
+
+    def euclidean(self, x, y):
+        return math.pow(x, 2) + math.pow(y, 2)
+
+    def get_pairs_indices(self, radius, size):
+        search_distances = []
+
+        for x in range(1, radius):
+            search_distances.append((0, x))
+
+        for y in range(1, radius):
+            # search_distances.append((0, y))
+            for x in range(1-radius, radius):
+                if euclidean(x, y) < math.pow(radius, 2):
+                    search_distances.append((y, x))
+
+        indices_whole = np.reshape(np.arange(0, size[-2]*size[-1], dtype=np.int64), (size[-2], size[-1]))
+
+        indices_from = np.reshape(indices_whole[:1-radius, radius-1:1-radius], [-1])
+
+        indices_result = []
+
+        for y, x in search_distances:
+            indices_to = indices_whole[y:y + 1 - radius + size[-2],
+                         radius - 1 + x:(radius - 1) + x + size[-2] - 2*radius + 2]
+
+            indices_to = np.reshape(indices_to, [-1])
+
+            indices_result.append(indices_to)
+
+        indices_result = np.concatenate(indices_result, axis = 0)
+
+        return indices_from, indices_result
 
 
 
@@ -445,36 +575,3 @@ class RandomCrop():
 
         return container
 
-def euclidean(x, y):
-    return math.pow(x, 2) + math.pow(y, 2)
-
-def get_pairs_indices(radius, size):
-
-    search_distances = []
-
-    for x in range(1, radius):
-        search_distances.append((0, x))
-
-    for y in range(1, radius):
-        # search_distances.append((0, y))
-        for x in range(1-radius, radius):
-            if euclidean(x, y) < math.pow(radius, 2):
-                search_distances.append((y, x))
-
-    indices_whole = np.reshape(np.arange(0, size[-2]*size[-1], dtype=np.int64), (size[-2], size[-1]))
-
-    indices_from = np.reshape(indices_whole[:1-radius, radius-1:1-radius], [-1])
-
-    indices_result = []
-
-    for y, x in search_distances:
-        indices_to = indices_whole[y:y + 1 - radius + size[-2],
-                     radius - 1 + x:(radius - 1) + x + size[-2] - 2*radius + 2]
-
-        indices_to = np.reshape(indices_to, [-1])
-
-        indices_result.append(indices_to)
-
-    indices_result = np.concatenate(indices_result, axis = 0)
-
-    return indices_from, indices_result
