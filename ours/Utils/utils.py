@@ -8,11 +8,12 @@ import math
 import mat73
 from skimage.transform import resize
 import random
-from iou import IoU
-from metrices import *
-# from ours.Utils.iou import *   # Georgios
-# from ours.Utils.metrices import *   # Georgios
+# from iou import IoU
+# from metrices import *
+from ours.Utils.iou import *   # Georgios
+from ours.Utils.metrices import *   # Georgios
 from torch import nn
+
 
 class ResizeMultipleChannels():
 
@@ -53,6 +54,7 @@ def set_seeds(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     return
+
 
 def pad_resize(img,desired_size):
 
@@ -158,9 +160,7 @@ class ImageNetSegm:
         return img_trans.to(self.device), seg_mask_trans.to(self.device), img_orig.to(self.device)
 
 
-
 ### Layer Initialization
-
 def no_grad_trunc_normal_(tensor, mean=0, std=1., a=-2., b=2.):
     # Cut & paste from PyTorch official master until it's in a few official releases - RW
     # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
