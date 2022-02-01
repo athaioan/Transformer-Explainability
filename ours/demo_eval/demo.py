@@ -4,25 +4,25 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from types import SimpleNamespace
-# from utils import *
-# from network import ViT_model
+from utils import *
+from network import ViT_model
 import pickle
 
-from ours.Utils.utils import * # Georgios
-from ours.Networks.network import ViT_model # Georgios
+# from ours.Utils.utils import * # Georgios
+# from ours.Networks.network import ViT_model # Georgios
 
 ### Setting arguments
 args = SimpleNamespace(batch_size=1,
                        input_dim=224,
                        pretrained_weights="saved_weights.pth",
-                       val_set=r"C:\Users\georg\PycharmProjects\Transformer-Explainability\ours\ILSVRC2012_img_val",
-                       # val_set="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/ILSVRC2012_img_val",
+                       # val_set="ILSVRC2012_img_val",
+                       val_set="C:/Users/johny/Desktop/Transformer-Explainability-main/ours/ILSVRC2012_img_val",
                        val_set_semg="gtsegs_ijcv.mat",
                        labels_dict="val_labels_dict.npy",
                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
                        )
 
-args.val_set_semg = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
+# args.val_set_semg = r'C:\Users\georg\Documents\KTH_ML_Master\Deep Learning Advanced Course\Project\Datasets\gtsegs_ijcv.mat'
 
 dict = {}
 
