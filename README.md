@@ -2,6 +2,7 @@
 
 ## Important resources
 
+* ALL WEIGHTS ANONYMOUS LINK https://drive.google.com/drive/folders/1lCjPjO3_BUnk-utY9-taCTQKoq2Pm43s?usp=sharing
 * BaseViT weights as pre-trained on ImageNet-1000 https://drive.google.com/file/d/1sQyk-9RUxu_ymOXruRaLa28z1_WhcQnp/view?usp=sharing
 * LargeViT weights as pre-trained on ImageNet-1000 https://drive.google.com/file/d/1Kr-PhNvIudleb3d9zEnZNtyv1L7HhDkB/view?usp=sharing 
 
